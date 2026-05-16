@@ -1,0 +1,51 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: togglemaster-postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-auth_db}
+      POSTGRES_USER: ${POSTGRES_USER:-auth_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-auth_pass}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      # Executa o schema na inicialização do Postgres
+      - ../auth-service/db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-auth_user} -d ${POSTGRES_DB:-auth_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - togglemaster-network
+
+  auth-service:
+    build:
+      context: ../auth-service
+    container_name: togglemaster-auth-service
+    ports:
+      - "8001:8001"
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgres://auth_user:auth_pass@postgres:5432/auth_db?sslmode=disable}
+      PORT: ${PORT:-8001}
+      MASTER_KEY: ${MASTER_KEY:-admin-secreto-123}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8001/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    networks:
+      - togglemaster-network
+
+networks:
+  togglemaster-network:
+    driver: bridge
+
+volumes:
+  postgres-data:
