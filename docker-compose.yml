@@ -1,19 +1,18 @@
 services:
-  postgres:
+  auth-postgres:
     image: postgres:16-alpine
-    container_name: togglemaster-postgres
+    container_name: togglemaster-auth-postgres
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-auth_db}
-      POSTGRES_USER: ${POSTGRES_USER:-auth_user}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-auth_pass}
+      POSTGRES_DB: auth_db
+      POSTGRES_USER: auth_user
+      POSTGRES_PASSWORD: auth_pass
     volumes:
       - postgres-data:/var/lib/postgresql/data
-      # Executa o schema na inicialização do Postgres
       - ../auth-service/db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     ports:
       - "5432:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-auth_user} -d ${POSTGRES_DB:-auth_db}"]
+      test: ["CMD-SHELL", "pg_isready -U auth_user -d auth_db"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -28,14 +27,59 @@ services:
     ports:
       - "8001:8001"
     environment:
-      DATABASE_URL: ${DATABASE_URL:-postgres://auth_user:auth_pass@postgres:5432/auth_db?sslmode=disable}
-      PORT: ${PORT:-8001}
-      MASTER_KEY: ${MASTER_KEY:-admin-secreto-123}
+      DATABASE_URL: postgres://auth_user:auth_pass@auth-postgres:5432/auth_db?sslmode=disable
+      PORT: "8001"
+      MASTER_KEY: admin-secreto-123
     depends_on:
-      postgres:
+      auth-postgres:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:8001/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    networks:
+      - togglemaster-network
+
+  flags-postgres:
+    image: postgres:16-alpine
+    container_name: togglemaster-flags-postgres
+    environment:
+      POSTGRES_DB: flags_db
+      POSTGRES_USER: flags_user
+      POSTGRES_PASSWORD: flags_pass
+    volumes:
+      - flags-postgres-data:/var/lib/postgresql/data
+      - ../flag-service/db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U flags_user -d flags_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - togglemaster-network
+
+  flag-service:
+    build:
+      context: ../flag-service
+    container_name: togglemaster-flag-service
+    ports:
+      - "8002:8002"
+    environment:
+      DATABASE_URL: postgres://flags_user:flags_pass@flags-postgres:5432/flags_db
+      AUTH_SERVICE_URL: http://auth-service:8001
+      PORT: "8002"
+    depends_on:
+      flags-postgres:
+        condition: service_healthy
+      auth-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8002/health || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -49,3 +93,4 @@ networks:
 
 volumes:
   postgres-data:
+  flags-postgres-data:
