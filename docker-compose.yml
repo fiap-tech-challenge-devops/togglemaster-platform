@@ -87,6 +87,120 @@ services:
     networks:
       - togglemaster-network
 
+  targeting-postgres:
+    image: postgres:16-alpine
+    container_name: togglemaster-targeting-postgres
+    environment:
+      POSTGRES_DB: targeting_db
+      POSTGRES_USER: targeting_user
+      POSTGRES_PASSWORD: targeting_pass
+    volumes:
+      - targeting-postgres-data:/var/lib/postgresql/data
+      - ../targeting-service/db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    ports:
+      - "5434:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U targeting_user -d targeting_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - togglemaster-network
+
+  targeting-service:
+    build:
+      context: ../targeting-service
+    container_name: togglemaster-targeting-service
+    ports:
+      - "8003:8003"
+    environment:
+      DATABASE_URL: postgres://targeting_user:targeting_pass@targeting-postgres:5432/targeting_db
+      AUTH_SERVICE_URL: http://auth-service:8001
+      PORT: "8003"
+    depends_on:
+      targeting-postgres:
+        condition: service_healthy
+      auth-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8003/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    networks:
+      - togglemaster-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: togglemaster-redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - togglemaster-network
+
+  evaluation-service:
+    build:
+      context: ../evaluation-service
+    container_name: togglemaster-evaluation-service
+    ports:
+      - "8004:8004"
+    environment:
+      PORT: "8004"
+      REDIS_URL: redis://redis:6379/0
+      FLAG_SERVICE_URL: http://flag-service:8002
+      TARGETING_SERVICE_URL: http://targeting-service:8003
+      SERVICE_API_KEY: ${EVALUATION_SERVICE_API_KEY:-}
+      AWS_SQS_URL: ${AWS_SQS_URL:-}
+      AWS_REGION: ${AWS_REGION:-us-east-1}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+    depends_on:
+      flag-service:
+        condition: service_healthy
+      targeting-service:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8004/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    networks:
+      - togglemaster-network
+
+  analytics-service:
+    build:
+      context: ../analytics-service
+    container_name: togglemaster-analytics-service
+    ports:
+      - "8005:8005"
+    environment:
+      PORT: "8005"
+      AWS_REGION: ${AWS_REGION:-us-east-1}
+      AWS_SQS_URL: ${AWS_SQS_URL:-}
+      AWS_DYNAMODB_TABLE: ${AWS_DYNAMODB_TABLE:-ToggleMasterAnalytics}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+      AWS_SESSION_TOKEN: ${AWS_SESSION_TOKEN:-}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8005/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    networks:
+      - togglemaster-network
+
 networks:
   togglemaster-network:
     driver: bridge
@@ -94,3 +208,4 @@ networks:
 volumes:
   postgres-data:
   flags-postgres-data:
+  targeting-postgres-data:
