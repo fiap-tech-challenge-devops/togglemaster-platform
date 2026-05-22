@@ -150,6 +150,8 @@ services:
     build:
       context: ../evaluation-service
     container_name: togglemaster-evaluation-service
+    env_file:
+      - .env
     ports:
       - "8004:8004"
     environment:
@@ -158,10 +160,6 @@ services:
       FLAG_SERVICE_URL: http://flag-service:8002
       TARGETING_SERVICE_URL: http://targeting-service:8003
       SERVICE_API_KEY: ${EVALUATION_SERVICE_API_KEY:-}
-      AWS_SQS_URL: ${AWS_SQS_URL:-}
-      AWS_REGION: ${AWS_REGION:-us-east-1}
-      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
-      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
     depends_on:
       flag-service:
         condition: service_healthy
@@ -182,16 +180,12 @@ services:
     build:
       context: ../analytics-service
     container_name: togglemaster-analytics-service
+    env_file:
+      - .env
     ports:
       - "8005:8005"
     environment:
       PORT: "8005"
-      AWS_REGION: ${AWS_REGION:-us-east-1}
-      AWS_SQS_URL: ${AWS_SQS_URL:-}
-      AWS_DYNAMODB_TABLE: ${AWS_DYNAMODB_TABLE:-ToggleMasterAnalytics}
-      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
-      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
-      AWS_SESSION_TOKEN: ${AWS_SESSION_TOKEN:-}
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:8005/health || exit 1"]
       interval: 30s

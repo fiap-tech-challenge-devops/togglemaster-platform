@@ -1,2 +1,5 @@
 # Instruções para IA (uso local — não versionar)
 ai/
+
+# Terraform — infra AWS destruível (lab)
+terraform/
