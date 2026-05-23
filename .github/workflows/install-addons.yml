@@ -103,10 +103,20 @@ jobs:
             --set "serviceAccount.annotations.eks\\.amazonaws\\.com/role-arn=$ESO_ROLE_ARN" \
             --atomic --wait --timeout 5m
 
+      - name: Aguardar CRDs do External Secrets
+        run: |
+          echo "Aguardando CRDs (api external-secrets.io/v1)..."
+          kubectl wait --for=condition=Established \
+            crd/clustersecretstores.external-secrets.io \
+            crd/externalsecrets.external-secrets.io \
+            crd/secretstores.external-secrets.io \
+            --timeout=180s
+          kubectl api-resources --api-group=external-secrets.io
+
       - name: Aplicar ClusterSecretStore
         run: |
           kubectl apply -f - <<EOF
-          apiVersion: external-secrets.io/v1beta1
+          apiVersion: external-secrets.io/v1
           kind: ClusterSecretStore
           metadata:
             name: aws-secrets-manager

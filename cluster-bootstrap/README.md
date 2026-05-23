@@ -43,7 +43,7 @@ sem configurar `aws-auth` manualmente.
 
 Variáveis em `terraform.tfvars`:
 
-- `github_repository` — ex.: `usuario/togglemaster-platform`
+- Repositório OIDC fixo em `locals.tf`: `fiap-tech-challenge-devops/togglemaster-platform`
 - `github_actions_role_name` — padrão `github-actions-eks-bootstrap` (mesmo nome da role criada no Portal)
 - `create_github_oidc_provider` — `false` se o provedor OIDC do GitHub já existir na conta
 
