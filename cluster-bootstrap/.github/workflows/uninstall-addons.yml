@@ -1,0 +1,105 @@
+name: EKS — Desinstalar Addons de Plataforma
+
+on:
+  workflow_dispatch:
+    inputs:
+      aws_region:
+        description: "Região AWS (ex: us-east-1)"
+        required: true
+        default: "us-east-1"
+      cluster_name:
+        description: "Nome do cluster EKS"
+        required: true
+        default: "togglemaster-lab-eks"
+      confirm:
+        description: 'Digite exatamente "CONFIRMAR" para prosseguir'
+        required: true
+
+jobs:
+  uninstall:
+    name: Desinstalar Addons
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+
+    env:
+      AWS_REGION: ${{ inputs.aws_region }}
+      CLUSTER_NAME: ${{ inputs.cluster_name }}
+
+    steps:
+      # ── Proteção contra disparo acidental ─────────────────────────────────────
+      - name: Verificar confirmação
+        run: |
+          if [ "${{ inputs.confirm }}" != "CONFIRMAR" ]; then
+            echo "Abortado: o campo 'confirm' deve conter exatamente CONFIRMAR."
+            exit 1
+          fi
+
+      # ── Autenticação AWS ──────────────────────────────────────────────────────
+      - name: Autenticar na AWS via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_OIDC_ROLE_ARN }}
+          aws-region: ${{ inputs.aws_region }}
+
+      # ── Ferramentas ───────────────────────────────────────────────────────────
+      - name: Setup kubectl
+        uses: azure/setup-kubectl@v4
+
+      - name: Setup Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: "3.16.3"
+
+      # ── Kubeconfig ────────────────────────────────────────────────────────────
+      - name: Configurar kubeconfig
+        run: |
+          aws eks update-kubeconfig \
+            --region "$AWS_REGION" \
+            --name   "$CLUSTER_NAME"
+
+      # ── Remoção em ordem inversa ──────────────────────────────────────────────
+      - name: Remover ClusterSecretStore
+        run: |
+          kubectl delete clustersecretstore aws-secrets-manager --ignore-not-found
+          echo "ClusterSecretStore removido (ou já não existia)."
+
+      - name: Desinstalar metrics-server
+        run: |
+          helm uninstall metrics-server --namespace kube-system || true
+          echo "metrics-server desinstalado (ou não estava instalado)."
+
+      - name: Desinstalar External Secrets Operator
+        run: |
+          helm uninstall external-secrets --namespace external-secrets || true
+          # Aguarda pods terminarem antes de apagar o namespace
+          kubectl wait --for=delete pod --all -n external-secrets --timeout=60s || true
+          kubectl delete namespace external-secrets --ignore-not-found
+          echo "ESO e namespace external-secrets removidos."
+
+      - name: Desinstalar AWS Load Balancer Controller
+        run: |
+          helm uninstall aws-load-balancer-controller --namespace kube-system || true
+          echo "AWS Load Balancer Controller desinstalado."
+
+      # ── Resumo ────────────────────────────────────────────────────────────────
+      - name: Resumo
+        run: |
+          echo "============================================================"
+          echo " DESINSTALAÇÃO — ToggleMaster Platform Addons"
+          echo " Cluster : $CLUSTER_NAME"
+          echo " Região  : $AWS_REGION"
+          echo "============================================================"
+          echo ""
+          echo "Removidos do cluster:"
+          echo "  - ClusterSecretStore aws-secrets-manager"
+          echo "  - metrics-server (se estava instalado)"
+          echo "  - External Secrets Operator + namespace external-secrets"
+          echo "  - AWS Load Balancer Controller"
+          echo ""
+          echo "NAO alterados (fora do escopo desta esteira):"
+          echo "  - ECR e imagens Docker"
+          echo "  - Infra Terraform (RDS, Redis, SQS, DynamoDB, EKS)"
+          echo "  - IRSA roles criados pela esteira de instalacao"
+          echo "    (remova manualmente se desejar: <cluster>-lbc-irsa, <cluster>-eso-irsa)"
