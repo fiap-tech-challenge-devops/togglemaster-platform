@@ -63,6 +63,19 @@ jobs:
           echo "LBC IRSA: arn:aws:iam::${ACCOUNT_ID}:role/${LBC_ROLE}"
           echo "ESO IRSA: arn:aws:iam::${ACCOUNT_ID}:role/${ESO_ROLE}"
 
+      # metrics-server antes do LBC — o webhook mservice.elbv2.k8s.aws exige TLS pronto
+      - name: Adicionar Helm repo metrics-server
+        run: |
+          helm repo add metrics-server https://kubernetes-sigs.github.io/metrics-server/
+          helm repo update metrics-server
+
+      - name: Instalar metrics-server
+        run: |
+          helm upgrade --install metrics-server metrics-server/metrics-server \
+            --namespace kube-system \
+            --set args[0]="--kubelet-insecure-tls" \
+            --atomic --wait --timeout 3m
+
       - name: Adicionar Helm repo eks
         run: |
           helm repo add eks https://aws.github.io/eks-charts
@@ -83,6 +96,36 @@ jobs:
             --set region="$AWS_REGION" \
             --set vpcId="$VPC_ID" \
             --atomic --wait --timeout 5m
+
+      - name: Aguardar webhook TLS do AWS Load Balancer Controller
+        run: |
+          kubectl rollout status deployment/aws-load-balancer-controller \
+            -n kube-system --timeout=300s
+
+          MWC=$(kubectl get mutatingwebhookconfiguration -o name 2>/dev/null \
+            | grep -E 'aws-load-balancer|elbv2' | head -1)
+
+          if [ -z "$MWC" ]; then
+            echo "ERRO: MutatingWebhookConfiguration do LBC nao encontrado"
+            kubectl get mutatingwebhookconfiguration
+            exit 1
+          fi
+
+          echo "Aguardando CA bundle em ${MWC}..."
+          for i in $(seq 1 60); do
+            LEN=$(kubectl get "$MWC" \
+              -o jsonpath='{.webhooks[?(@.name=="mservice.elbv2.k8s.aws")].clientConfig.caBundle}' 2>/dev/null \
+              | wc -c | tr -d ' ')
+            if [ "${LEN:-0}" -gt 100 ]; then
+              echo "Webhook LBC pronto (caBundle length=${LEN})"
+              exit 0
+            fi
+            echo "Aguardando CA do webhook LBC... (${i}/60)"
+            sleep 5
+          done
+          echo "ERRO: CA do webhook LBC nao ficou pronto a tempo"
+          kubectl get "$MWC" -o yaml
+          exit 1
 
       - name: Adicionar Helm repo external-secrets
         run: |
@@ -132,33 +175,17 @@ jobs:
                       namespace: external-secrets
           EOF
 
-      - name: Adicionar Helm repo metrics-server
-        run: |
-          helm repo add metrics-server https://kubernetes-sigs.github.io/metrics-server/
-          helm repo update metrics-server
-
-      - name: Instalar metrics-server
-        run: |
-          helm upgrade --install metrics-server metrics-server/metrics-server \
-            --namespace kube-system \
-            --set args[0]="--kubelet-insecure-tls" \
-            --atomic --wait --timeout 3m
-
       - name: Validar AWS Load Balancer Controller
         run: |
-          kubectl rollout status deployment/aws-load-balancer-controller \
-            -n kube-system --timeout=120s
           kubectl get pods -n kube-system \
             -l app.kubernetes.io/name=aws-load-balancer-controller
+          kubectl get ingressclass alb
 
       - name: Validar External Secrets Operator
         run: |
           kubectl rollout status deployment/external-secrets \
             -n external-secrets --timeout=120s
           kubectl get pods -n external-secrets
-
-      - name: Validar IngressClass ALB
-        run: kubectl get ingressclass alb
 
       - name: Validar ClusterSecretStore
         run: |
