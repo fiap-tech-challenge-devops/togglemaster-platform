@@ -14,22 +14,10 @@ Uso pessoal/lab — não é entrega versionada nesta fase.
 
 ---
 
-## Como publicar a esteira no GitHub
+## Localização dos workflows
 
-Os workflows GitHub Actions precisam estar em `.github/workflows/` **na raiz do repositório**
-para serem reconhecidos pelo GitHub.
-
-```bash
-# A partir da raiz do repositório:
-mkdir -p .github/workflows
-
-cp togglemaster-platform/cluster-bootstrap/.github/workflows/install-addons.yml   .github/workflows/
-cp togglemaster-platform/cluster-bootstrap/.github/workflows/uninstall-addons.yml .github/workflows/
-
-git add .github/workflows/
-git commit -m "ci: adiciona esteira de addons EKS"
-git push
-```
+Os workflows estão em `.github/workflows/` na raiz do repositório e são reconhecidos
+diretamente pelo GitHub Actions — nenhum passo extra necessário.
 
 ---
 
