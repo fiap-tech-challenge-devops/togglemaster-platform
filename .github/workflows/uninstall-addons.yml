@@ -10,7 +10,7 @@ on:
       cluster_name:
         description: "Nome do cluster EKS"
         required: true
-        default: "togglemaster-lab-eks"
+        default: "eks-togglemaster"
       confirm:
         description: 'Digite exatamente "CONFIRMAR" para prosseguir'
         required: true
@@ -100,6 +100,5 @@ jobs:
           echo ""
           echo "NAO alterados (fora do escopo desta esteira):"
           echo "  - ECR e imagens Docker"
-          echo "  - Infra Terraform (RDS, Redis, SQS, DynamoDB, EKS)"
-          echo "  - IRSA roles criados pela esteira de instalacao"
-          echo "    (remova manualmente se desejar: <cluster>-lbc-irsa, <cluster>-eso-irsa)"
+          echo "  - Infra Terraform (RDS, Redis, SQS, DynamoDB, EKS, IRSA LBC/ESO)"
+          echo "    IRSA: <cluster>-lbc-irsa, <cluster>-eso-irsa (removidas com terraform destroy)"

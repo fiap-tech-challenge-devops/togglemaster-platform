@@ -10,14 +10,14 @@ on:
       cluster_name:
         description: "Nome do cluster EKS (output eks_cluster_name do Terraform)"
         required: true
-        default: "togglemaster-lab-eks"
+        default: "eks-togglemaster"
 
 jobs:
   install:
     name: Instalar Addons
     runs-on: ubuntu-latest
     permissions:
-      id-token: write  # OIDC — obrigatório
+      id-token: write
       contents: read
 
     env:
@@ -25,14 +25,12 @@ jobs:
       CLUSTER_NAME: ${{ inputs.cluster_name }}
 
     steps:
-      # ── Autenticação AWS ──────────────────────────────────────────────────────
       - name: Autenticar na AWS via OIDC
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_OIDC_ROLE_ARN }}
           aws-region: ${{ inputs.aws_region }}
 
-      # ── Ferramentas ───────────────────────────────────────────────────────────
       - name: Setup kubectl
         uses: azure/setup-kubectl@v4
 
@@ -41,7 +39,6 @@ jobs:
         with:
           version: "3.16.3"
 
-      # ── Kubeconfig ────────────────────────────────────────────────────────────
       - name: Configurar kubeconfig
         run: |
           aws eks update-kubeconfig \
@@ -51,71 +48,21 @@ jobs:
       - name: Verificar conectividade com o cluster
         run: kubectl get nodes -o wide
 
-      # ── IRSA: AWS Load Balancer Controller ───────────────────────────────────
-      - name: Criar IRSA — AWS Load Balancer Controller
+      # IRSA roles criadas pelo Terraform (platform_irsa.tf) — apenas resolver ARNs
+      - name: Resolver ARNs das roles IRSA (Terraform)
         run: |
           ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
-          ROLE_NAME="${CLUSTER_NAME}-lbc-irsa"
+          LBC_ROLE="${CLUSTER_NAME}-lbc-irsa"
+          ESO_ROLE="${CLUSTER_NAME}-eso-irsa"
 
-          OIDC_ISSUER=$(aws eks describe-cluster \
-            --name "$CLUSTER_NAME" --region "$AWS_REGION" \
-            --query "cluster.identity.oidc.issuer" --output text \
-            | sed 's|https://||')
-          OIDC_ARN="arn:aws:iam::${ACCOUNT_ID}:oidc-provider/${OIDC_ISSUER}"
+          aws iam get-role --role-name "$LBC_ROLE" >/dev/null
+          aws iam get-role --role-name "$ESO_ROLE" >/dev/null
 
-          TRUST_POLICY=$(cat <<TRUST
-          {
-            "Version": "2012-10-17",
-            "Statement": [{
-              "Effect": "Allow",
-              "Principal": {"Federated": "${OIDC_ARN}"},
-              "Action": "sts:AssumeRoleWithWebIdentity",
-              "Condition": {
-                "StringEquals": {
-                  "${OIDC_ISSUER}:sub": "system:serviceaccount:kube-system:aws-load-balancer-controller",
-                  "${OIDC_ISSUER}:aud": "sts.amazonaws.com"
-                }
-              }
-            }]
-          }
-          TRUST
-          )
+          echo "LBC_ROLE_ARN=arn:aws:iam::${ACCOUNT_ID}:role/${LBC_ROLE}" >> "$GITHUB_ENV"
+          echo "ESO_ROLE_ARN=arn:aws:iam::${ACCOUNT_ID}:role/${ESO_ROLE}" >> "$GITHUB_ENV"
+          echo "LBC IRSA: arn:aws:iam::${ACCOUNT_ID}:role/${LBC_ROLE}"
+          echo "ESO IRSA: arn:aws:iam::${ACCOUNT_ID}:role/${ESO_ROLE}"
 
-          # Cria ou atualiza a role (idempotente)
-          if aws iam get-role --role-name "$ROLE_NAME" 2>/dev/null; then
-            aws iam update-assume-role-policy \
-              --role-name "$ROLE_NAME" \
-              --policy-document "$TRUST_POLICY"
-          else
-            aws iam create-role \
-              --role-name "$ROLE_NAME" \
-              --assume-role-policy-document "$TRUST_POLICY" \
-              --description "IRSA for AWS Load Balancer Controller — ${CLUSTER_NAME}"
-          fi
-
-          # Cria IAM Policy do LBC se ainda não existe
-          POLICY_NAME="${CLUSTER_NAME}-AWSLoadBalancerControllerIAMPolicy"
-          POLICY_ARN="arn:aws:iam::${ACCOUNT_ID}:policy/${POLICY_NAME}"
-
-          if ! aws iam get-policy --policy-arn "$POLICY_ARN" 2>/dev/null; then
-            curl -fsSL \
-              https://raw.githubusercontent.com/kubernetes-sigs/aws-load-balancer-controller/v2.8.3/docs/install/iam_policy.json \
-              -o /tmp/lbc-iam-policy.json
-            aws iam create-policy \
-              --policy-name  "$POLICY_NAME" \
-              --policy-document file:///tmp/lbc-iam-policy.json \
-              --description "Policy para AWS Load Balancer Controller — ${CLUSTER_NAME}"
-          fi
-
-          # Attach (idempotente — ignora se já vinculada)
-          aws iam attach-role-policy \
-            --role-name "$ROLE_NAME" \
-            --policy-arn "$POLICY_ARN" 2>/dev/null || true
-
-          echo "LBC_ROLE_ARN=arn:aws:iam::${ACCOUNT_ID}:role/${ROLE_NAME}" >> "$GITHUB_ENV"
-          echo "Criado/atualizado: arn:aws:iam::${ACCOUNT_ID}:role/${ROLE_NAME}"
-
-      # ── Helm: AWS Load Balancer Controller ───────────────────────────────────
       - name: Adicionar Helm repo eks
         run: |
           helm repo add eks https://aws.github.io/eks-charts
@@ -137,72 +84,6 @@ jobs:
             --set vpcId="$VPC_ID" \
             --atomic --wait --timeout 5m
 
-      # ── IRSA: External Secrets Operator ──────────────────────────────────────
-      - name: Criar IRSA — External Secrets Operator
-        run: |
-          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
-          ROLE_NAME="${CLUSTER_NAME}-eso-irsa"
-
-          OIDC_ISSUER=$(aws eks describe-cluster \
-            --name "$CLUSTER_NAME" --region "$AWS_REGION" \
-            --query "cluster.identity.oidc.issuer" --output text \
-            | sed 's|https://||')
-          OIDC_ARN="arn:aws:iam::${ACCOUNT_ID}:oidc-provider/${OIDC_ISSUER}"
-
-          TRUST_POLICY=$(cat <<TRUST
-          {
-            "Version": "2012-10-17",
-            "Statement": [{
-              "Effect": "Allow",
-              "Principal": {"Federated": "${OIDC_ARN}"},
-              "Action": "sts:AssumeRoleWithWebIdentity",
-              "Condition": {
-                "StringEquals": {
-                  "${OIDC_ISSUER}:sub": "system:serviceaccount:external-secrets:external-secrets",
-                  "${OIDC_ISSUER}:aud": "sts.amazonaws.com"
-                }
-              }
-            }]
-          }
-          TRUST
-          )
-
-          if aws iam get-role --role-name "$ROLE_NAME" 2>/dev/null; then
-            aws iam update-assume-role-policy \
-              --role-name "$ROLE_NAME" \
-              --policy-document "$TRUST_POLICY"
-          else
-            aws iam create-role \
-              --role-name "$ROLE_NAME" \
-              --assume-role-policy-document "$TRUST_POLICY" \
-              --description "IRSA for External Secrets Operator — ${CLUSTER_NAME}"
-          fi
-
-          # Inline policy — leitura no Secrets Manager
-          ESO_POLICY=$(cat <<'POLICY'
-          {
-            "Version": "2012-10-17",
-            "Statement": [{
-              "Effect": "Allow",
-              "Action": [
-                "secretsmanager:GetSecretValue",
-                "secretsmanager:DescribeSecret",
-                "secretsmanager:ListSecretVersionIds"
-              ],
-              "Resource": "*"
-            }]
-          }
-          POLICY
-          )
-          aws iam put-role-policy \
-            --role-name "$ROLE_NAME" \
-            --policy-name "ESO-SecretsManagerRead" \
-            --policy-document "$ESO_POLICY"
-
-          echo "ESO_ROLE_ARN=arn:aws:iam::${ACCOUNT_ID}:role/${ROLE_NAME}" >> "$GITHUB_ENV"
-          echo "Criado/atualizado: arn:aws:iam::${ACCOUNT_ID}:role/${ROLE_NAME}"
-
-      # ── Helm: External Secrets Operator ──────────────────────────────────────
       - name: Adicionar Helm repo external-secrets
         run: |
           helm repo add external-secrets https://charts.external-secrets.io
@@ -222,7 +103,6 @@ jobs:
             --set "serviceAccount.annotations.eks\\.amazonaws\\.com/role-arn=$ESO_ROLE_ARN" \
             --atomic --wait --timeout 5m
 
-      # ── ClusterSecretStore → AWS Secrets Manager ──────────────────────────────
       - name: Aplicar ClusterSecretStore
         run: |
           kubectl apply -f - <<EOF
@@ -242,7 +122,6 @@ jobs:
                       namespace: external-secrets
           EOF
 
-      # ── metrics-server ────────────────────────────────────────────────────────
       - name: Adicionar Helm repo metrics-server
         run: |
           helm repo add metrics-server https://kubernetes-sigs.github.io/metrics-server/
@@ -255,7 +134,6 @@ jobs:
             --set args[0]="--kubelet-insecure-tls" \
             --atomic --wait --timeout 3m
 
-      # ── Validação ─────────────────────────────────────────────────────────────
       - name: Validar AWS Load Balancer Controller
         run: |
           kubectl rollout status deployment/aws-load-balancer-controller \
@@ -274,7 +152,6 @@ jobs:
 
       - name: Validar ClusterSecretStore
         run: |
-          # Aguarda até 60s o ClusterSecretStore ficar Ready
           for i in $(seq 1 12); do
             STATUS=$(kubectl get clustersecretstore aws-secrets-manager \
               -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}' 2>/dev/null)
@@ -293,29 +170,22 @@ jobs:
             -n kube-system --timeout=60s
           kubectl top nodes
 
-      # ── Resumo ────────────────────────────────────────────────────────────────
       - name: Resumo da instalação
         if: always()
         run: |
           echo "============================================================"
-          echo " INSTALAÇÃO — ToggleMaster Platform Addons"
+          echo " INSTALACAO — ToggleMaster Platform Addons"
           echo " Cluster : $CLUSTER_NAME"
-          echo " Região  : $AWS_REGION"
+          echo " Regiao  : $AWS_REGION"
           echo "============================================================"
           echo ""
-          echo "Addons instalados:"
-          echo "  - AWS Load Balancer Controller  (namespace: kube-system)"
-          echo "  - External Secrets Operator      (namespace: external-secrets)"
-          echo "  - ClusterSecretStore             aws-secrets-manager -> Secrets Manager"
-          echo "  - IngressClass ALB               (criado pelo LBC chart)"
-          echo "  - metrics-server                 (namespace: kube-system)"
+          echo "Addons instalados (Helm/kubectl):"
+          echo "  - AWS Load Balancer Controller  (kube-system)"
+          echo "  - External Secrets Operator      (external-secrets)"
+          echo "  - ClusterSecretStore             aws-secrets-manager"
+          echo "  - IngressClass ALB               (chart LBC)"
+          echo "  - metrics-server                 (kube-system)"
           echo ""
-          echo "IRSA roles criados/atualizados:"
-          echo "  - ${CLUSTER_NAME}-lbc-irsa   (AWS Load Balancer Controller)"
-          echo "  - ${CLUSTER_NAME}-eso-irsa   (External Secrets Operator)"
-          echo ""
-          echo "Como validar no terminal:"
-          echo "  kubectl get pods -n kube-system -l app.kubernetes.io/name=aws-load-balancer-controller"
-          echo "  kubectl get pods -n external-secrets"
-          echo "  kubectl get clustersecretstore aws-secrets-manager -o wide"
-          echo "  kubectl get ingressclass"
+          echo "IRSA (Terraform platform_irsa.tf):"
+          echo "  - ${CLUSTER_NAME}-lbc-irsa"
+          echo "  - ${CLUSTER_NAME}-eso-irsa"

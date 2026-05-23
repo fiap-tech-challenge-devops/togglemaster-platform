@@ -8,6 +8,7 @@ Uso pessoal/lab — não é entrega versionada nesta fase.
 ## Pré-requisitos
 
 - `terraform apply` executado com sucesso (pelo menos 1 node Ready no cluster)
+- IRSA de plataforma criadas pelo Terraform (`platform_irsa.tf`): `<cluster>-lbc-irsa` e `<cluster>-eso-irsa`
 - Outputs do Terraform disponíveis (`terraform output` na pasta `togglemaster-platform/terraform/`)
 - ECR criado manualmente (fora desta esteira; a esteira nunca toca no ECR)
 - Repositório GitHub com Actions habilitado
@@ -27,71 +28,33 @@ Configure em **Settings → Secrets and variables → Actions → Repository sec
 
 | Secret | Descrição |
 |--------|-----------|
-| `AWS_OIDC_ROLE_ARN` | ARN da IAM Role assumida pelo runner via OIDC (ex: `arn:aws:iam::123456789012:role/github-actions-eks-bootstrap`) |
+| `AWS_OIDC_ROLE_ARN` | ARN da role OIDC — use `terraform output -raw github_actions_role_arn` após o apply |
 
 > O `AWS_ACCOUNT_ID` é obtido dinamicamente via `aws sts get-caller-identity` — não precisa de secret.
 
-### IAM Role do runner (OIDC com GitHub)
+### IAM Role do runner (gerenciada pelo Terraform)
 
-Crie uma IAM Role com a seguinte trust policy (substitua `<ACCOUNT_ID>`, `<ORG>` e `<REPO>`):
+A role `github_actions` (`github_actions.tf`), policy mínima (só `eks:DescribeCluster`) e o **EKS Access Entry**
+(`AmazonEKSClusterAdminPolicy`) são criados no `terraform apply`. IRSA do LBC e ESO ficam em
+`platform_irsa.tf` — a esteira **não cria IAM**, apenas instala charts Helm e aplica manifests.
 
-```json
-{
-  "Version": "2012-10-17",
-  "Statement": [{
-    "Effect": "Allow",
-    "Principal": {
-      "Federated": "arn:aws:iam::<ACCOUNT_ID>:oidc-provider/token.actions.githubusercontent.com"
-    },
-    "Action": "sts:AssumeRoleWithWebIdentity",
-    "Condition": {
-      "StringEquals": {
-        "token.actions.githubusercontent.com:aud": "sts.amazonaws.com"
-      },
-      "StringLike": {
-        "token.actions.githubusercontent.com:sub": "repo:<ORG>/<REPO>:*"
-      }
-    }
-  }]
-}
+O cluster usa `authentication_mode = API_AND_CONFIG_MAP`, então `kubectl get nodes` na esteira funciona
+sem configurar `aws-auth` manualmente.
+
+Variáveis em `terraform.tfvars`:
+
+- `github_repository` — ex.: `usuario/togglemaster-platform`
+- `github_actions_role_name` — padrão `github-actions-eks-bootstrap` (mesmo nome da role criada no Portal)
+- `create_github_oidc_provider` — `false` se o provedor OIDC do GitHub já existir na conta
+
+**Migrar role criada à mão (uma vez):**
+
+```bash
+cd togglemaster-platform/terraform
+terraform import aws_iam_role.github_actions github-actions-eks-bootstrap
 ```
 
-Permissões mínimas necessárias na role do runner:
-
-```json
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Action": [
-        "eks:DescribeCluster",
-        "iam:GetRole",
-        "iam:CreateRole",
-        "iam:UpdateAssumeRolePolicy",
-        "iam:AttachRolePolicy",
-        "iam:PutRolePolicy",
-        "iam:GetPolicy",
-        "iam:CreatePolicy",
-        "iam:ListAttachedRolePolicies",
-        "sts:GetCallerIdentity",
-        "elasticloadbalancing:*",
-        "ec2:Describe*",
-        "ec2:AuthorizeSecurityGroupIngress",
-        "ec2:RevokeSecurityGroupIngress",
-        "ec2:CreateSecurityGroup",
-        "ec2:CreateTags",
-        "ec2:DeleteTags",
-        "wafv2:*",
-        "shield:*",
-        "secretsmanager:GetSecretValue",
-        "secretsmanager:DescribeSecret"
-      ],
-      "Resource": "*"
-    }
-  ]
-}
-```
+Depois do apply, confira o ARN e atualize o secret `AWS_OIDC_ROLE_ARN` se mudou.
 
 ---
 
@@ -106,7 +69,7 @@ Permissões mínimas necessárias na role do runner:
 | Input | Obrigatório | Padrão | Descrição |
 |-------|-------------|--------|-----------|
 | `aws_region` | sim | `us-east-1` | Região do cluster |
-| `cluster_name` | sim | `togglemaster-lab-eks` | Output `eks_cluster_name` do Terraform |
+| `cluster_name` | sim | `eks-togglemaster` | Output `eks_cluster_name` do Terraform |
 
 ### Desinstalar addons
 
@@ -114,23 +77,22 @@ Permissões mínimas necessárias na role do runner:
 2. Preencha `aws_region` e `cluster_name`
 3. No campo `confirm`, digite exatamente **`CONFIRMAR`** para prosseguir
 
-> A desinstalação **não apaga** ECR, infra Terraform (RDS, Redis, EKS, SQS, DynamoDB) nem as
-> IRSA roles criadas pela esteira. Remova as roles manualmente se desejar limpeza completa.
+> A desinstalação **não apaga** ECR nem infra Terraform (RDS, Redis, EKS, SQS, DynamoDB, IRSA).
 
 ---
 
 ## Addons instalados (ordem de execução)
 
-| Addon | Chart Helm | Namespace | IRSA role criada |
-|-------|-----------|-----------|-----------------|
+| Addon | Chart Helm | Namespace | IRSA (Terraform) |
+|-------|-----------|-----------|------------------|
 | AWS Load Balancer Controller | `eks/aws-load-balancer-controller` | `kube-system` | `<cluster>-lbc-irsa` |
 | External Secrets Operator | `external-secrets/external-secrets` | `external-secrets` | `<cluster>-eso-irsa` |
-| ClusterSecretStore | `kubectl apply` inline | cluster-scoped | — (usa ESO SA) |
+| ClusterSecretStore | `kubectl apply` inline | cluster-scoped | usa SA do ESO |
 | IngressClass ALB | criado pelo LBC chart | cluster-scoped | — |
 | metrics-server | `metrics-server/metrics-server` | `kube-system` | — |
 
 O ClusterSecretStore `aws-secrets-manager` aponta para o AWS Secrets Manager na região do cluster.
-Os secrets RDS criados pelo Terraform (`togglemaster-lab/rds/auth`, `/rds/flags`, `/rds/targeting`)
+Os secrets RDS criados pelo Terraform (`togglemaster/rds/auth`, `/rds/flags`, `/rds/targeting`)
 ficam disponíveis para os microserviços via ExternalSecret.
 
 ---
@@ -139,7 +101,7 @@ ficam disponíveis para os microserviços via ExternalSecret.
 
 ```bash
 # Obter kubeconfig
-aws eks update-kubeconfig --region us-east-1 --name togglemaster-lab-eks
+aws eks update-kubeconfig --region us-east-1 --name eks-togglemaster
 
 # AWS Load Balancer Controller
 kubectl get pods -n kube-system -l app.kubernetes.io/name=aws-load-balancer-controller
@@ -164,8 +126,12 @@ kubectl top nodes
 ```bash
 cd togglemaster-platform/terraform
 
-terraform output eks_cluster_name          # nome do cluster
-terraform output aws_region                # região
+terraform output eks_cluster_name              # eks-togglemaster
+terraform output -raw github_actions_role_arn  # secret AWS_OIDC_ROLE_ARN
+terraform output -raw iam_role_arn_lbc_irsa      # IRSA LBC (antes da esteira)
+terraform output -raw iam_role_arn_eso_irsa      # IRSA ESO (antes da esteira)
+terraform output aws_region                    # região
+terraform output vpc_id
 terraform output eks_update_kubeconfig_command
 
 terraform output secret_arn_rds_auth       # ARN para testar ExternalSecret
