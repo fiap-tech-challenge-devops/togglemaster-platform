@@ -1,5 +1,17 @@
 # Instruções para IA (uso local — não versionar)
 ai/
 
-# Terraform — infra AWS destruível (lab)
+# Terraform monolítico antigo (obsoleto — substituído por iac/)
 terraform/
+
+# Artefatos locais do Terraform
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+tfplan
+crash.log
+
+# tfvars reais podem conter segredos — versione só os .example
+*.auto.tfvars
+**/terraform.tfvars
