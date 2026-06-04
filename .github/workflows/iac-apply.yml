@@ -96,3 +96,30 @@ jobs:
       - name: Terraform apply
         working-directory: iac/addons
         run: terraform apply -input=false -auto-approve
+
+  deploy:
+    name: Stage 3 — deploy apps
+    runs-on: ubuntu-latest
+    needs: addons
+    if: ${{ inputs.action == 'apply' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Autenticar na AWS (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_OIDC_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - uses: azure/setup-kubectl@v4
+
+      - name: Configurar kubeconfig
+        run: |
+          CLUSTER=$(aws ssm get-parameter --name /togglemaster/iac/cluster-name \
+            --query Parameter.Value --output text)
+          aws eks update-kubeconfig --name "$CLUSTER" --region "$AWS_REGION"
+
+      - name: kubectl apply
+        run: |
+          kubectl apply -f k8s/namespace.yaml
+          kubectl apply -f k8s/ --recursive
