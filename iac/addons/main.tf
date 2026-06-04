@@ -82,32 +82,7 @@ module "addons" {
   tags = local.tags
 }
 
-# ── ClusterSecretStore — ESO → AWS Secrets Manager ────────────────────────────
-# kubectl_manifest tolera a CRD do ESO não existir no plan (apply em sequência).
-resource "kubectl_manifest" "cluster_secret_store" {
-  yaml_body = yamlencode({
-    apiVersion = "external-secrets.io/v1"
-    kind       = "ClusterSecretStore"
-    metadata = {
-      name = "aws-secrets-manager"
-    }
-    spec = {
-      provider = {
-        aws = {
-          service = "SecretsManager"
-          region  = var.region
-          auth = {
-            jwt = {
-              serviceAccountRef = {
-                name      = "external-secrets"
-                namespace = var.external_secrets_namespace
-              }
-            }
-          }
-        }
-      }
-    }
-  })
-
-  depends_on = [module.addons]
-}
+# A ClusterSecretStore (ESO → Secrets Manager) é aplicada no stage de DEPLOY
+# (k8s/cluster-secret-store.yaml) — via kubectl, com a CRD do ESO já estabelecida.
+# Criá-la aqui pelo provider kubectl falhava: o discovery da API era cacheado
+# antes da CRD existir ("ClusterSecretStore isn't valid for cluster").
