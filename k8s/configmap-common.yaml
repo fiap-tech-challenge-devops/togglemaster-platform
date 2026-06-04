@@ -10,7 +10,9 @@ data:
 
   AWS_DYNAMODB_TABLE: "ToggleMasterAnalytics"
 
-  REDIS_URL: "redis://redis-togglemaster.nft7ae.ng.0001.use1.cache.amazonaws.com:6379/0"
+  # Injetado pelo stage de deploy a partir do SSM (/togglemaster/iac/redis-url),
+  # pois o endpoint do ElastiCache é gerado pela AWS a cada criação da infra.
+  REDIS_URL: "set-by-deploy-from-ssm"
 
   # URLs internas — DNS curto funciona dentro do namespace togglemaster
   AUTH_SERVICE_URL: "http://auth-service:8001"

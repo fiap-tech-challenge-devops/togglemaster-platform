@@ -123,3 +123,12 @@ jobs:
         run: |
           kubectl apply -f k8s/namespace.yaml
           kubectl apply -f k8s/ --recursive
+
+      - name: Injetar REDIS_URL (do SSM) no ConfigMap
+        run: |
+          REDIS_URL=$(aws ssm get-parameter --name /togglemaster/iac/redis-url \
+            --query Parameter.Value --output text)
+          kubectl patch configmap togglemaster-common -n togglemaster --type merge \
+            -p "{\"data\":{\"REDIS_URL\":\"${REDIS_URL}\"}}"
+          # env de ConfigMap não recarrega sozinho — reinicia quem consome REDIS_URL
+          kubectl rollout restart deployment/evaluation-service -n togglemaster
