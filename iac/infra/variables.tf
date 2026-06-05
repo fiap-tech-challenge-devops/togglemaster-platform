@@ -4,6 +4,12 @@ variable "region" {
   default     = "us-east-1"
 }
 
+variable "admin_iam_arns" {
+  description = "Lista de ARNs IAM (usuários/roles) que recebem acesso cluster-admin no EKS"
+  type        = list(string)
+  default     = ["arn:aws:iam::650687537445:user/vitor.prado"]
+}
+
 variable "system" {
   description = "Nome do sistema — base para o padrão <tipo>-<sistema>"
   type        = string
