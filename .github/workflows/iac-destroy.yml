@@ -168,19 +168,31 @@ jobs:
             -backend-config="region=${{ env.AWS_REGION }}" \
             -backend-config="dynamodb_table=togglemaster-iac-tflock"
 
-      - name: Limpar SGs órfãos do EKS
+      - name: Limpar SGs órfãos (EKS + ALB controller)
         run: |
-          # O EKS cria um cluster SG extra que não é gerenciado pelo Terraform.
-          # Se não for deletado antes, bloqueia a deleção da VPC.
+          # SGs criados FORA do Terraform que bloqueiam a deleção da VPC:
+          #  - eks-cluster-sg-*           : criado pelo EKS
+          #  - k8s-* (tag elbv2.k8s.aws/*): criado pelo ALB controller para o ALB.
+          #    Como o controller é morto no drain, esses SGs ficam órfãos.
           VPC_ID=$(aws ec2 describe-vpcs \
             --filters "Name=tag:System,Values=togglemaster" \
             --query "Vpcs[0].VpcId" --output text 2>/dev/null || true)
+
           if [ -n "$VPC_ID" ] && [ "$VPC_ID" != "None" ]; then
-            SGS=$(aws ec2 describe-security-groups \
+            # SGs do ALB controller (identificados pela tag elbv2.k8s.aws/cluster)
+            ALB_SGS=$(aws ec2 describe-security-groups \
+              --filters "Name=vpc-id,Values=${VPC_ID}" "Name=tag-key,Values=elbv2.k8s.aws/cluster" \
+              --query "SecurityGroups[*].GroupId" --output text 2>/dev/null)
+
+            # SG do cluster EKS (criado pelo serviço, fora do Terraform)
+            EKS_SGS=$(aws ec2 describe-security-groups \
               --filters "Name=vpc-id,Values=${VPC_ID}" "Name=group-name,Values=eks-cluster-sg-*" \
               --query "SecurityGroups[*].GroupId" --output text 2>/dev/null)
-            for SG in $SGS; do
-              echo "Deletando SG órfão do EKS: $SG"
+
+            for SG in $ALB_SGS $EKS_SGS; do
+              echo "Deletando SG órfão: $SG"
+              # || true: SGs ainda em uso (ex.: cluster vivo) são pulados; o
+              # terraform destroy a seguir cuida dos gerenciados por ele.
               aws ec2 delete-security-group --group-id "$SG" || true
             done
           fi
