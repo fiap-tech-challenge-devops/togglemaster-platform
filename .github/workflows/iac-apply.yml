@@ -124,6 +124,26 @@ jobs:
           kubectl apply -f k8s/namespace.yaml
           kubectl apply -f k8s/ --recursive
 
+      - name: Rodar migrations de banco (idempotente)
+        run: |
+          migrate() {
+            local NAME=$1 SECRET=$2 SQL_FILE=$3
+            echo "Migrando $NAME..."
+            URL=$(aws secretsmanager get-secret-value --secret-id "$SECRET" \
+              --query SecretString --output text | jq -r '.connection_string')
+            POD="migrate-${NAME}"
+            kubectl run "$POD" --image=postgres:16 --restart=Never \
+              -n togglemaster -- sleep 120
+            kubectl wait pod/"$POD" -n togglemaster \
+              --for=condition=Ready --timeout=30s
+            cat "$SQL_FILE" | kubectl exec -i "$POD" -n togglemaster -- psql "$URL"
+            kubectl delete pod "$POD" -n togglemaster --ignore-not-found
+          }
+
+          migrate auth      togglemaster/rds/auth      k8s/migrations/auth.sql
+          migrate flags     togglemaster/rds/flags     k8s/migrations/flags.sql
+          migrate targeting togglemaster/rds/targeting k8s/migrations/targeting.sql
+
       - name: Bootstrap SERVICE_API_KEY
         run: |
           CURRENT=$(aws secretsmanager get-secret-value \
