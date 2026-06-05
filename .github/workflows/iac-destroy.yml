@@ -59,7 +59,30 @@ jobs:
 
       - name: Remover Ingress (libera o ALB) e namespace
         run: |
-          kubectl delete ingress togglemaster -n togglemaster --ignore-not-found --wait=true
+          # Deleta o Ingress — ALB Controller começa a deletar o ALB na AWS
+          kubectl delete ingress togglemaster -n togglemaster --ignore-not-found
+
+          # Aguarda o ALB ser removido da AWS antes de prosseguir (até 5 min)
+          # Sem isso o Terraform falha ao deletar subnets com ENIs do ALB ainda presentes
+          VPC_ID=$(aws ec2 describe-vpcs \
+            --filters "Name=tag:System,Values=togglemaster" \
+            --query "Vpcs[0].VpcId" --output text 2>/dev/null || echo "")
+
+          if [ -n "$VPC_ID" ] && [ "$VPC_ID" != "None" ]; then
+            echo "Aguardando remoção do ALB na VPC $VPC_ID..."
+            for i in $(seq 1 30); do
+              LBS=$(aws elbv2 describe-load-balancers \
+                --query "LoadBalancers[?VpcId=='${VPC_ID}'].LoadBalancerArn" \
+                --output text 2>/dev/null)
+              if [ -z "$LBS" ]; then
+                echo "ALB removido. Prosseguindo."
+                break
+              fi
+              echo "ALB ainda existe ($i/30), aguardando 10s..."
+              sleep 10
+            done
+          fi
+
           kubectl delete namespace togglemaster --ignore-not-found --wait=true
 
   destroy-addons:
