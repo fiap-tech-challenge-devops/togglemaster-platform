@@ -156,6 +156,23 @@ jobs:
             -backend-config="region=${{ env.AWS_REGION }}" \
             -backend-config="dynamodb_table=togglemaster-iac-tflock"
 
+      - name: Limpar SGs órfãos do EKS
+        run: |
+          # O EKS cria um cluster SG extra que não é gerenciado pelo Terraform.
+          # Se não for deletado antes, bloqueia a deleção da VPC.
+          VPC_ID=$(aws ec2 describe-vpcs \
+            --filters "Name=tag:System,Values=togglemaster" \
+            --query "Vpcs[0].VpcId" --output text 2>/dev/null || true)
+          if [ -n "$VPC_ID" ] && [ "$VPC_ID" != "None" ]; then
+            SGS=$(aws ec2 describe-security-groups \
+              --filters "Name=vpc-id,Values=${VPC_ID}" "Name=group-name,Values=eks-cluster-sg-*" \
+              --query "SecurityGroups[*].GroupId" --output text 2>/dev/null)
+            for SG in $SGS; do
+              echo "Deletando SG órfão do EKS: $SG"
+              aws ec2 delete-security-group --group-id "$SG" || true
+            done
+          fi
+
       - name: Terraform destroy
         working-directory: iac/infra
         run: terraform destroy -input=false -auto-approve
