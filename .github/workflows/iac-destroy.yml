@@ -61,17 +61,24 @@ jobs:
           else
             aws eks update-kubeconfig --name "$CLUSTER" --region "$AWS_REGION"
 
-            # Drain gracioso de todos os nodes: vpc-cni limpa as ENIs secundárias
-            # antes das instâncias serem terminadas pelo Terraform
+            # Drain de todos os nodes: vpc-cni libera as ENIs secundárias antes
+            # das instâncias serem terminadas pelo Terraform.
+            # --disable-eviction usa DELETE direto (ignora PodDisruptionBudgets):
+            # num cluster de 1 node o CoreDNS não pode ser evictado via PDB e
+            # travaria o drain. Em teardown, deletar direto é o comportamento certo.
             for NODE in $(kubectl get nodes -o name 2>/dev/null); do
               echo "Drenando $NODE..."
               kubectl drain "$NODE" \
-                --ignore-daemonsets --delete-emptydir-data --force --timeout=120s || true
+                --ignore-daemonsets --delete-emptydir-data --force \
+                --disable-eviction --timeout=90s || true
             done
 
             # Deleta o Ingress — ALB Controller começa a deletar o ALB na AWS
             kubectl delete ingress togglemaster -n togglemaster --ignore-not-found
-            kubectl delete namespace togglemaster --ignore-not-found --wait=true
+            # Timeout limita a espera caso algum finalizer trave a deleção
+            # (o namespace some de qualquer forma ao destruir o cluster).
+            kubectl delete namespace togglemaster \
+              --ignore-not-found --wait=true --timeout=120s || true
           fi
 
           # Aguarda o ALB ser removido da AWS antes de prosseguir (até 5 min)
