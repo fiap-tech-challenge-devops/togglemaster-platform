@@ -8,14 +8,25 @@ metadata:
     alb.ingress.kubernetes.io/target-type: ip
     alb.ingress.kubernetes.io/listen-ports: '[{"HTTP":80}]'
     alb.ingress.kubernetes.io/healthcheck-path: /health
-  # NOTA: o ALB NÃO remove o prefixo do path. /auth/... chega na app como /auth/...
-  # Se as apps servem na raiz, use rewrite (alb actions) ou roteamento por host.
+  # O ALB NÃO remove o prefixo do path, então roteamos pelos paths REAIS que
+  # cada app serve na raiz (sem rewrite):
+  #   auth-service       -> /validate, /admin/keys
+  #   flag-service       -> /flags
+  #   targeting-service  -> /rules
+  #   evaluation-service -> /evaluate
 spec:
   ingressClassName: alb
   rules:
     - http:
         paths:
-          - path: /auth
+          - path: /validate
+            pathType: Prefix
+            backend:
+              service:
+                name: auth-service
+                port:
+                  number: 8001
+          - path: /admin
             pathType: Prefix
             backend:
               service:
@@ -29,7 +40,7 @@ spec:
                 name: flag-service
                 port:
                   number: 8002
-          - path: /targeting
+          - path: /rules
             pathType: Prefix
             backend:
               service:

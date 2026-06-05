@@ -146,37 +146,46 @@ jobs:
 
       - name: Bootstrap SERVICE_API_KEY
         run: |
+          # Garante auth-service pronto (preciso dele de pé para validar/gerar key)
+          kubectl wait externalsecret/auth-service-app -n togglemaster \
+            --for=condition=Ready --timeout=60s
+          kubectl rollout restart deployment/auth-service -n togglemaster
+          kubectl rollout status deployment/auth-service -n togglemaster --timeout=180s
+
+          # Port-forward para o runner acessar o auth-service diretamente
+          kubectl port-forward svc/auth-service 8001:8001 -n togglemaster &
+          PF_PID=$!
+          sleep 5
+
           CURRENT=$(aws secretsmanager get-secret-value \
             --secret-id togglemaster/app/evaluation \
             --query SecretString --output text | jq -r '.SERVICE_API_KEY')
 
-          if [[ "$CURRENT" == placeholder* ]]; then
-            echo "SERVICE_API_KEY é placeholder — gerando via auth-service..."
+          # Valida a key ATUAL contra o auth-service. Regenera se for placeholder
+          # OU inválida: o secret do SM persiste entre destroy/apply, mas num apply
+          # limpo o RDS do auth é recriado, deixando a key antiga órfã (401).
+          VALID="false"
+          if [[ "$CURRENT" != placeholder* && -n "$CURRENT" && "$CURRENT" != "null" ]]; then
+            CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+              http://localhost:8001/validate -H "Authorization: Bearer $CURRENT")
+            [[ "$CODE" == "200" ]] && VALID="true"
+          fi
 
-            # Aguarda ESO sincronizar o secret do auth-service antes do pod tentar iniciar
-            kubectl wait externalsecret/auth-service-app -n togglemaster \
-              --for=condition=Ready --timeout=60s
-            kubectl rollout restart deployment/auth-service -n togglemaster
-
-            # Aguarda auth-service ficar Ready (até 3 min)
-            kubectl rollout status deployment/auth-service -n togglemaster --timeout=180s
-
-            # Lê MASTER_KEY do Secrets Manager
+          if [[ "$VALID" == "true" ]]; then
+            echo "SERVICE_API_KEY válida — pulando."
+            kill $PF_PID || true
+          else
+            echo "SERVICE_API_KEY ausente/inválida — gerando nova via auth-service..."
             MASTER_KEY=$(aws secretsmanager get-secret-value \
               --secret-id togglemaster/app/auth \
               --query SecretString --output text | jq -r '.MASTER_KEY')
-
-            # Port-forward para o runner acessar o serviço diretamente
-            kubectl port-forward svc/auth-service 8001:8001 -n togglemaster &
-            PF_PID=$!
-            sleep 5
 
             API_KEY=$(curl -sf -X POST http://localhost:8001/admin/keys \
               -H "Content-Type: application/json" \
               -H "Authorization: Bearer $MASTER_KEY" \
               -d '{"name":"evaluation-service"}' | jq -r '.key')
 
-            kill $PF_PID
+            kill $PF_PID || true
 
             if [[ -z "$API_KEY" || "$API_KEY" == "null" ]]; then
               echo "Falha ao gerar API key — verifique o auth-service" && exit 1
@@ -186,12 +195,10 @@ jobs:
               --secret-id togglemaster/app/evaluation \
               --secret-string "{\"SERVICE_API_KEY\":\"${API_KEY}\"}"
 
-            # Força ESO a recriar o secret com o valor real
+            # Força ESO a recriar o secret k8s com o valor real
             kubectl delete secret evaluation-service-secrets -n togglemaster --ignore-not-found
             sleep 15
-            echo "SERVICE_API_KEY gerado e sincronizado."
-          else
-            echo "SERVICE_API_KEY já configurado — pulando."
+            echo "SERVICE_API_KEY gerada e sincronizada."
           fi
 
       - name: Injetar REDIS_URL (do SSM) no ConfigMap
