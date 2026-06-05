@@ -70,12 +70,23 @@ module "eks" {
     }
   }
 
+  # Prefix delegation: aumenta max-pods de 17 → ~110 no t3.medium.
+  # AL2023 EKS-optimized AMI calcula o max-pods automaticamente ao bootstap.
   cluster_addons = {
-    coredns                = {}
-    kube-proxy             = {}
-    vpc-cni                = {}
+    coredns = {}
+    kube-proxy = {}
+    vpc-cni = {
+      configuration_values = jsonencode({
+        env = {
+          ENABLE_PREFIX_DELEGATION = "true"
+          WARM_PREFIX_TARGET       = "1"
+        }
+      })
+    }
     eks-pod-identity-agent = {}
   }
+
+  enable_ebs_csi_driver = false # não usamos PVCs; desabilita 3 pods de sistema
 
   tags = local.tags
 }
