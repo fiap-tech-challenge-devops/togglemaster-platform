@@ -51,22 +51,26 @@ jobs:
 
       - uses: azure/setup-kubectl@v4
 
-      - name: Configurar kubeconfig
-        run: |
-          CLUSTER=$(aws ssm get-parameter --name /togglemaster/iac/cluster-name \
-            --query Parameter.Value --output text 2>/dev/null) || exit 0
-          aws eks update-kubeconfig --name "$CLUSTER" --region "$AWS_REGION"
-
       - name: Remover Ingress (libera o ALB) e namespace
         run: |
-          # Deleta o Ingress — ALB Controller começa a deletar o ALB na AWS
-          kubectl delete ingress togglemaster -n togglemaster --ignore-not-found
+          CLUSTER=$(aws ssm get-parameter --name /togglemaster/iac/cluster-name \
+            --query Parameter.Value --output text 2>/dev/null || true)
+
+          if [ -z "$CLUSTER" ] || [ "$CLUSTER" == "None" ]; then
+            echo "Cluster não encontrado no SSM — pulando remoção de recursos k8s."
+          else
+            aws eks update-kubeconfig --name "$CLUSTER" --region "$AWS_REGION"
+
+            # Deleta o Ingress — ALB Controller começa a deletar o ALB na AWS
+            kubectl delete ingress togglemaster -n togglemaster --ignore-not-found
+            kubectl delete namespace togglemaster --ignore-not-found --wait=true
+          fi
 
           # Aguarda o ALB ser removido da AWS antes de prosseguir (até 5 min)
           # Sem isso o Terraform falha ao deletar subnets com ENIs do ALB ainda presentes
           VPC_ID=$(aws ec2 describe-vpcs \
             --filters "Name=tag:System,Values=togglemaster" \
-            --query "Vpcs[0].VpcId" --output text 2>/dev/null || echo "")
+            --query "Vpcs[0].VpcId" --output text 2>/dev/null || true)
 
           if [ -n "$VPC_ID" ] && [ "$VPC_ID" != "None" ]; then
             echo "Aguardando remoção do ALB na VPC $VPC_ID..."
@@ -82,8 +86,6 @@ jobs:
               sleep 10
             done
           fi
-
-          kubectl delete namespace togglemaster --ignore-not-found --wait=true
 
   destroy-addons:
     name: Stage 2 — destroy addons
