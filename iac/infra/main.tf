@@ -175,6 +175,18 @@ module "dynamodb" {
   tags = local.tags
 }
 
+# Importa access entries criados manualmente antes do Terraform gerenciar este recurso.
+# Após a primeira execução bem-sucedida esses blocos viram no-op (TF 1.5+).
+import {
+  to = aws_eks_access_entry.admin["arn:aws:iam::650687537445:user/vitor.prado"]
+  id = "eks-togglemaster,arn:aws:iam::650687537445:user/vitor.prado"
+}
+
+import {
+  to = aws_eks_access_policy_association.admin["arn:aws:iam::650687537445:user/vitor.prado"]
+  id = "eks-togglemaster,arn:aws:iam::650687537445:user/vitor.prado,arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy"
+}
+
 # ── EKS access entries (admin local) ─────────────────────────────────────────
 resource "aws_eks_access_entry" "admin" {
   for_each = toset(var.admin_iam_arns)
