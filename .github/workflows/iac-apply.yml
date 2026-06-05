@@ -133,6 +133,11 @@ jobs:
           if [[ "$CURRENT" == placeholder* ]]; then
             echo "SERVICE_API_KEY é placeholder — gerando via auth-service..."
 
+            # Aguarda ESO sincronizar o secret do auth-service antes do pod tentar iniciar
+            kubectl wait externalsecret/auth-service-app -n togglemaster \
+              --for=condition=Ready --timeout=60s
+            kubectl rollout restart deployment/auth-service -n togglemaster
+
             # Aguarda auth-service ficar Ready (até 3 min)
             kubectl rollout status deployment/auth-service -n togglemaster --timeout=180s
 
@@ -178,8 +183,15 @@ jobs:
 
       - name: Reiniciar serviços
         run: |
+          # Aguarda todos os ExternalSecrets sincronizarem antes de reiniciar
+          kubectl wait externalsecret --all -n togglemaster \
+            --for=condition=Ready --timeout=90s
           # Garante que todos os pods recarregam ConfigMap e secrets atualizados
           kubectl rollout restart deployment/auth-service -n togglemaster
           kubectl rollout restart deployment/evaluation-service -n togglemaster
+          kubectl rollout restart deployment/flag-service -n togglemaster
+          kubectl rollout restart deployment/targeting-service -n togglemaster
           kubectl rollout status deployment/auth-service -n togglemaster --timeout=120s
           kubectl rollout status deployment/evaluation-service -n togglemaster --timeout=120s
+          kubectl rollout status deployment/flag-service -n togglemaster --timeout=120s
+          kubectl rollout status deployment/targeting-service -n togglemaster --timeout=120s
