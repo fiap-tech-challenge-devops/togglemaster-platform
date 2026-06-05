@@ -124,11 +124,62 @@ jobs:
           kubectl apply -f k8s/namespace.yaml
           kubectl apply -f k8s/ --recursive
 
+      - name: Bootstrap SERVICE_API_KEY
+        run: |
+          CURRENT=$(aws secretsmanager get-secret-value \
+            --secret-id togglemaster/app/evaluation \
+            --query SecretString --output text | jq -r '.SERVICE_API_KEY')
+
+          if [[ "$CURRENT" == placeholder* ]]; then
+            echo "SERVICE_API_KEY é placeholder — gerando via auth-service..."
+
+            # Aguarda auth-service ficar Ready (até 3 min)
+            kubectl rollout status deployment/auth-service -n togglemaster --timeout=180s
+
+            # Lê MASTER_KEY do Secrets Manager
+            MASTER_KEY=$(aws secretsmanager get-secret-value \
+              --secret-id togglemaster/app/auth \
+              --query SecretString --output text | jq -r '.MASTER_KEY')
+
+            # Port-forward para o runner acessar o serviço diretamente
+            kubectl port-forward svc/auth-service 8001:8001 -n togglemaster &
+            PF_PID=$!
+            sleep 5
+
+            API_KEY=$(curl -sf -X POST http://localhost:8001/admin/keys \
+              -H "Content-Type: application/json" \
+              -H "Authorization: Bearer $MASTER_KEY" \
+              -d '{"name":"evaluation-service"}' | jq -r '.key')
+
+            kill $PF_PID
+
+            if [[ -z "$API_KEY" || "$API_KEY" == "null" ]]; then
+              echo "Falha ao gerar API key — verifique o auth-service" && exit 1
+            fi
+
+            aws secretsmanager put-secret-value \
+              --secret-id togglemaster/app/evaluation \
+              --secret-string "{\"SERVICE_API_KEY\":\"${API_KEY}\"}"
+
+            # Força ESO a recriar o secret com o valor real
+            kubectl delete secret evaluation-service-secrets -n togglemaster --ignore-not-found
+            sleep 15
+            echo "SERVICE_API_KEY gerado e sincronizado."
+          else
+            echo "SERVICE_API_KEY já configurado — pulando."
+          fi
+
       - name: Injetar REDIS_URL (do SSM) no ConfigMap
         run: |
           REDIS_URL=$(aws ssm get-parameter --name /togglemaster/iac/redis-url \
             --query Parameter.Value --output text)
           kubectl patch configmap togglemaster-common -n togglemaster --type merge \
             -p "{\"data\":{\"REDIS_URL\":\"${REDIS_URL}\"}}"
-          # env de ConfigMap não recarrega sozinho — reinicia quem consome REDIS_URL
+
+      - name: Reiniciar serviços
+        run: |
+          # Garante que todos os pods recarregam ConfigMap e secrets atualizados
+          kubectl rollout restart deployment/auth-service -n togglemaster
           kubectl rollout restart deployment/evaluation-service -n togglemaster
+          kubectl rollout status deployment/auth-service -n togglemaster --timeout=120s
+          kubectl rollout status deployment/evaluation-service -n togglemaster --timeout=120s
