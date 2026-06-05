@@ -68,6 +68,17 @@ module "addons" {
   enable_external_secrets             = true
   external_secrets_namespace          = var.external_secrets_namespace
 
+  # Desabilita o service mutator webhook do ALB controller. Esse webhook
+  # intercepta TODO Service do cluster e, antes dos pods do controller ficarem
+  # prontos, quebra a criação de Services de outros charts (ex.: ESO) com
+  # "no endpoints available for service aws-load-balancer-webhook-service".
+  # Só usamos Ingress (ALB), nunca Service type=LoadBalancer — webhook é dispensável.
+  aws_load_balancer_controller_helm_values = [
+    yamlencode({
+      enableServiceMutatorWebhook = false
+    })
+  ]
+
   # O módulo não anota a SA do ESO com a role IRSA — injetamos via helm values.
   external_secrets_helm_values = [
     yamlencode({
