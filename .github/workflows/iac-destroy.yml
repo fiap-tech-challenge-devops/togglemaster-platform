@@ -51,7 +51,7 @@ jobs:
 
       - uses: azure/setup-kubectl@v4
 
-      - name: Draining nodes e remover recursos k8s
+      - name: Remover recursos k8s e drenar nodes
         run: |
           CLUSTER=$(aws ssm get-parameter --name /togglemaster/iac/cluster-name \
             --query Parameter.Value --output text 2>/dev/null || true)
@@ -61,43 +61,48 @@ jobs:
           else
             aws eks update-kubeconfig --name "$CLUSTER" --region "$AWS_REGION"
 
-            # Drain de todos os nodes: vpc-cni libera as ENIs secundárias antes
-            # das instâncias serem terminadas pelo Terraform.
-            # --disable-eviction usa DELETE direto (ignora PodDisruptionBudgets):
-            # num cluster de 1 node o CoreDNS não pode ser evictado via PDB e
-            # travaria o drain. Em teardown, deletar direto é o comportamento certo.
+            # ORDEM IMPORTA: o ALB Controller precisa estar VIVO para deletar o ALB
+            # na AWS e remover o finalizer do Ingress. Por isso deletamos o Ingress
+            # e esperamos o ALB sumir ANTES de drenar os nodes (o drain mata o
+            # controller, deixando o ALB órfão e o Ingress preso no finalizer).
+
+            # 1) Deleta o Ingress (--wait=false: o finalizer só sai quando o ALB for
+            #    removido; esperamos isso no loop abaixo, não aqui)
+            kubectl delete ingress togglemaster -n togglemaster \
+              --ignore-not-found --wait=false
+
+            # 2) Espera o ALB ser removido da AWS (controller ainda ativo, até 5 min)
+            VPC_ID=$(aws ec2 describe-vpcs \
+              --filters "Name=tag:System,Values=togglemaster" \
+              --query "Vpcs[0].VpcId" --output text 2>/dev/null || true)
+            if [ -n "$VPC_ID" ] && [ "$VPC_ID" != "None" ]; then
+              echo "Aguardando remoção do ALB na VPC $VPC_ID..."
+              for i in $(seq 1 30); do
+                LBS=$(aws elbv2 describe-load-balancers \
+                  --query "LoadBalancers[?VpcId=='${VPC_ID}'].LoadBalancerArn" \
+                  --output text 2>/dev/null)
+                if [ -z "$LBS" ]; then
+                  echo "ALB removido. Prosseguindo."
+                  break
+                fi
+                echo "ALB ainda existe ($i/30), aguardando 10s..."
+                sleep 10
+              done
+            fi
+
+            # 3) Deleta o namespace (já sem o ALB pendente)
+            kubectl delete namespace togglemaster \
+              --ignore-not-found --wait=true --timeout=120s || true
+
+            # 4) AGORA drena os nodes: vpc-cni libera as ENIs secundárias antes do
+            #    Terraform terminar as instâncias. --disable-eviction usa DELETE
+            #    direto (ignora PodDisruptionBudgets) — num cluster de 1 node o
+            #    CoreDNS não evictaria via PDB e travaria o drain.
             for NODE in $(kubectl get nodes -o name 2>/dev/null); do
               echo "Drenando $NODE..."
               kubectl drain "$NODE" \
                 --ignore-daemonsets --delete-emptydir-data --force \
                 --disable-eviction --timeout=90s || true
-            done
-
-            # Deleta o Ingress — ALB Controller começa a deletar o ALB na AWS
-            kubectl delete ingress togglemaster -n togglemaster --ignore-not-found
-            # Timeout limita a espera caso algum finalizer trave a deleção
-            # (o namespace some de qualquer forma ao destruir o cluster).
-            kubectl delete namespace togglemaster \
-              --ignore-not-found --wait=true --timeout=120s || true
-          fi
-
-          # Aguarda o ALB ser removido da AWS antes de prosseguir (até 5 min)
-          VPC_ID=$(aws ec2 describe-vpcs \
-            --filters "Name=tag:System,Values=togglemaster" \
-            --query "Vpcs[0].VpcId" --output text 2>/dev/null || true)
-
-          if [ -n "$VPC_ID" ] && [ "$VPC_ID" != "None" ]; then
-            echo "Aguardando remoção do ALB na VPC $VPC_ID..."
-            for i in $(seq 1 30); do
-              LBS=$(aws elbv2 describe-load-balancers \
-                --query "LoadBalancers[?VpcId=='${VPC_ID}'].LoadBalancerArn" \
-                --output text 2>/dev/null)
-              if [ -z "$LBS" ]; then
-                echo "ALB removido. Prosseguindo."
-                break
-              fi
-              echo "ALB ainda existe ($i/30), aguardando 10s..."
-              sleep 10
             done
           fi
 
