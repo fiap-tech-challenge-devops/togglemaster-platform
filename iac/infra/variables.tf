@@ -25,13 +25,13 @@ variable "vpc_cidr" {
 variable "public_subnet_cidrs" {
   description = "CIDRs das subnets públicas (uma por AZ)"
   type        = list(string)
-  default     = ["10.0.0.0/20", "10.0.16.0/20", "10.0.32.0/20"]
+  default     = ["10.0.1.0/24", "10.0.2.0/24"]
 }
 
 variable "private_subnet_cidrs" {
   description = "CIDRs das subnets privadas (uma por AZ)"
   type        = list(string)
-  default     = ["10.0.48.0/20", "10.0.64.0/20", "10.0.80.0/20"]
+  default     = ["10.0.11.0/24", "10.0.12.0/24"]
 }
 
 # ── Node group SPOT (mínimo necessário) ───────────────────────────────────────
@@ -45,7 +45,7 @@ variable "node_instance_types" {
 variable "node_desired_size" {
   description = "Quantidade desejada de nós"
   type        = number
-  default     = 2
+  default     = 1
 }
 
 variable "node_min_size" {
@@ -57,7 +57,7 @@ variable "node_min_size" {
 variable "node_max_size" {
   description = "Máximo de nós"
   type        = number
-  default     = 3
+  default     = 2
 }
 
 # ── RDS ───────────────────────────────────────────────────────────────────────

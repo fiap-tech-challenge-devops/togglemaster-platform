@@ -3,8 +3,7 @@ locals {
 
   tags = {
     Project   = "ToggleMaster"
-    System    = var.system
-    ManagedBy = "terraform"
+    System    = var.system    
   }
 
   # 3 RDS PostgreSQL independentes — db_name/username são as strings exatas que as apps usam

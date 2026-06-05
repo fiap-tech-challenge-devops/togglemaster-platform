@@ -15,3 +15,5 @@ crash.log
 # tfvars reais podem conter segredos — versione só os .example
 *.auto.tfvars
 **/terraform.tfvars
+
+.env
