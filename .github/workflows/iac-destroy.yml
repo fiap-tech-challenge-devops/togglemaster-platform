@@ -94,6 +94,20 @@ jobs:
             kubectl delete namespace togglemaster \
               --ignore-not-found --wait=true --timeout=120s || true
 
+            # 3.1) Karpenter: deletar NodePool/EC2NodeClass faz o controller (AINDA VIVO)
+            #      drenar e TERMINAR os nós que ele criou. Esses nós são EC2 fora do
+            #      Terraform — se sobrevivessem ao destroy do controller, virariam
+            #      órfãos e travariam a deleção da VPC (ENIs nas subnets).
+            kubectl delete nodepool --all --ignore-not-found --timeout=120s 2>/dev/null || true
+            kubectl delete ec2nodeclass --all --ignore-not-found 2>/dev/null || true
+            echo "Aguardando nós do Karpenter terminarem..."
+            for i in $(seq 1 30); do
+              KNODES=$(kubectl get nodes -l karpenter.sh/nodepool --no-headers 2>/dev/null | wc -l)
+              if [ "$KNODES" -eq 0 ]; then echo "Nós do Karpenter removidos."; break; fi
+              echo "Ainda $KNODES nó(s) do Karpenter ($i/30), aguardando 10s..."
+              sleep 10
+            done
+
             # 4) AGORA drena os nodes: vpc-cni libera as ENIs secundárias antes do
             #    Terraform terminar as instâncias. --disable-eviction usa DELETE
             #    direto (ignora PodDisruptionBudgets) — num cluster de 1 node o

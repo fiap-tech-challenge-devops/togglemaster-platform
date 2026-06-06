@@ -68,6 +68,11 @@ module "addons" {
   enable_external_secrets             = true
   external_secrets_namespace          = var.external_secrets_namespace
 
+  # Karpenter: o módulo cria controller (IRSA), IAM role dos nós, access entry,
+  # fila SQS de interrupção + EventBridge. As CRDs NodePool/EC2NodeClass ficam em
+  # k8s/karpenter/ (aplicadas no deploy). Namespace e chart usam o default (kube-system / 1.1.1).
+  enable_karpenter = true
+
   # Desabilita o service mutator webhook do ALB controller. Esse webhook
   # intercepta TODO Service do cluster e, antes dos pods do controller ficarem
   # prontos, quebra a criação de Services de outros charts (ex.: ESO) com
