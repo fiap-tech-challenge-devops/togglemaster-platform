@@ -124,6 +124,15 @@ jobs:
           kubectl apply -f k8s/namespace.yaml
           kubectl apply -f k8s/ --recursive
 
+      - name: Aplicar EC2NodeClass do Karpenter (role via SSM)
+        run: |
+          # O NodePool (estático) já foi aplicado acima. O EC2NodeClass é template
+          # porque a role dos nós tem sufixo aleatório — substituímos pelo valor do SSM.
+          ROLE=$(aws ssm get-parameter --name /togglemaster/iac/karpenter-node-role \
+            --query Parameter.Value --output text)
+          sed "s|__KARPENTER_NODE_ROLE__|${ROLE}|" k8s/karpenter/ec2nodeclass.yaml.tpl \
+            | kubectl apply -f -
+
       - name: Rodar migrations de banco (idempotente)
         run: |
           migrate() {
