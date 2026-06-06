@@ -70,8 +70,11 @@ module "addons" {
 
   # Karpenter: o módulo cria controller (IRSA), IAM role dos nós, access entry,
   # fila SQS de interrupção + EventBridge. As CRDs NodePool/EC2NodeClass ficam em
-  # k8s/karpenter/ (aplicadas no deploy). Namespace e chart usam o default (kube-system / 1.1.1).
-  enable_karpenter = true
+  # k8s/karpenter/ (aplicadas no deploy).
+  # Chart 1.3.3: o default do módulo (1.1.1) NÃO suporta k8s 1.32 (controller dá
+  # panic "not compatible with K8s version 1.32"). Karpenter >= 1.2 é necessário.
+  enable_karpenter        = true
+  karpenter_chart_version = "1.3.3"
 
   # Desabilita o service mutator webhook do ALB controller. Esse webhook
   # intercepta TODO Service do cluster e, antes dos pods do controller ficarem
