@@ -51,19 +51,19 @@ variable "node_instance_types" {
 variable "node_desired_size" {
   description = "Quantidade desejada de nós"
   type        = number
-  default     = 1
+  default     = 2
 }
 
 variable "node_min_size" {
   description = "Mínimo de nós"
   type        = number
-  default     = 1
+  default     = 2
 }
 
 variable "node_max_size" {
   description = "Máximo de nós"
   type        = number
-  default     = 2
+  default     = 3
 }
 
 # ── RDS ───────────────────────────────────────────────────────────────────────
