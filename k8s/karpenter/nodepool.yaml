@@ -11,7 +11,7 @@ spec:
         # SPOT primeiro (mais barato); cai pra on-demand se não houver SPOT.
         - key: karpenter.sh/capacity-type
           operator: In
-          values: ["spot", "on-demand"]
+          values: ["spot"]
         # Só amd64 — as imagens do ECR são amd64 (evita nó Graviton/arm64 quebrar pods).
         - key: kubernetes.io/arch
           operator: In
