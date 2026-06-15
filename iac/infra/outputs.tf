@@ -75,20 +75,13 @@ output "dynamodb_table_arn" {
 }
 
 # ── IRSA (apps) ───────────────────────────────────────────────────────────────
-output "irsa_evaluation_role_arn" {
-  description = "ARN da IRSA do evaluation-service (annotation eks.amazonaws.com/role-arn)"
-  value       = module.irsa_evaluation.role_arn
+# Role única compartilhada por evaluation-service e analytics-service (ver irsa.tf).
+output "irsa_apps_role_arn" {
+  description = "ARN da IRSA das apps (annotation eks.amazonaws.com/role-arn nos SAs do namespace togglemaster)"
+  value       = module.irsa_apps.role_arn
 }
 
-output "irsa_analytics_role_arn" {
-  description = "ARN da IRSA do analytics-service (annotation eks.amazonaws.com/role-arn)"
-  value       = module.irsa_analytics.role_arn
-}
-
-output "irsa_ssm_parameters" {
-  description = "Parâmetros SSM com os ARNs das roles IRSA (consumidos pelos manifestos)"
-  value = {
-    evaluation = module.irsa_evaluation.ssm_parameter_name
-    analytics  = module.irsa_analytics.ssm_parameter_name
-  }
+output "irsa_ssm_parameter" {
+  description = "Parâmetro SSM com o ARN da role IRSA das apps (consumido pelos manifestos)"
+  value       = module.irsa_apps.ssm_parameter_name
 }
