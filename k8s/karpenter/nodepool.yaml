@@ -39,6 +39,12 @@ spec:
   disruption:
     consolidationPolicy: WhenEmptyOrUnderutilized
     consolidateAfter: 1m
+    # budgets controla QUANTOS nós podem ser disrompidos por vez. O default do Karpenter
+    # é "10%" — com poucos nós, floor(10% × N) = 0, e os nós SPOT de burst NUNCA
+    # consolidam após um teste (custo fica de pé). "100%" libera a consolidação total:
+    # ao fim da carga, todos os nós SPOT ociosos somem e volta-se ao baseline.
+    budgets:
+      - nodes: "100%"
   # Teto de custo do NodePool — rede de segurança contra runaway.
   limits:
     cpu: "16"
