@@ -40,30 +40,33 @@ variable "private_subnet_cidrs" {
   default     = ["10.0.11.0/24", "10.0.12.0/24"]
 }
 
-# ── Node group SPOT (mínimo necessário) ───────────────────────────────────────
+# ── Node group principal (ON_DEMAND, baseline fixo) ───────────────────────────
+# Nó estável (não-SPOT) dimensionado para rodar TODO o sistema em repouso (~22 pods,
+# ~1.1 vCPU). O burst dos testes de carga vai para o Karpenter (SPOT) — ver
+# k8s/karpenter/nodepool.yaml. Por isso o managed node group fica fixo em 1 nó.
 
 variable "node_instance_types" {
-  description = "Tipos de instância do node group SPOT (diversificação melhora disponibilidade de SPOT)"
+  description = "Tipo de instância do node principal (on-demand). t3.large: 35 maxPods (cabe os ~22 pods do baseline) / 2 vCPU / 8 GB"
   type        = list(string)
-  default     = ["t3.medium", "t3a.medium"]
+  default     = ["t3.large"]
 }
 
 variable "node_desired_size" {
-  description = "Quantidade desejada de nós"
+  description = "Nós desejados no baseline (fixo em 1 — o burst é responsabilidade do Karpenter)"
   type        = number
-  default     = 2
+  default     = 1
 }
 
 variable "node_min_size" {
-  description = "Mínimo de nós"
+  description = "Mínimo de nós do baseline (1 = sempre há o nó principal; ASG recria se ele cair)"
   type        = number
-  default     = 2
+  default     = 1
 }
 
 variable "node_max_size" {
-  description = "Máximo de nós"
+  description = "Máximo de nós do baseline (1 = o managed node group NÃO escala; quem escala é o Karpenter SPOT)"
   type        = number
-  default     = 3
+  default     = 1
 }
 
 # ── RDS ───────────────────────────────────────────────────────────────────────

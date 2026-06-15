@@ -2,8 +2,8 @@ locals {
   cluster_name = "eks-${var.system}"
 
   tags = {
-    Project   = "ToggleMaster"
-    System    = var.system    
+    Project = "ToggleMaster"
+    System  = var.system
   }
 
   # 3 RDS PostgreSQL independentes — db_name/username são as strings exatas que as apps usam
@@ -40,7 +40,7 @@ module "vpc" {
   tags = local.tags
 }
 
-# ── EKS (node group SPOT) ─────────────────────────────────────────────────────
+# ── EKS (node principal ON_DEMAND; burst em SPOT via Karpenter) ───────────────
 module "eks" {
   source = "github.com/vitorfprado/terraform-aws-modules//eks?ref=main"
 
@@ -56,24 +56,28 @@ module "eks" {
   enable_irsa    = true
   create_kms_key = true
 
-  # Único node group, todo SPOT (sem taint para os pods de sistema agendarem normalmente)
+  # Node group principal ON_DEMAND (baseline estável). Fixo em 1 nó dimensionado
+  # para o sistema em repouso; o burst dos testes de carga vai para o Karpenter (SPOT).
+  # Sem taint, para os pods de sistema agendarem normalmente neste nó.
   node_groups = {
-    spot = {
+    baseline = {
       instance_types = var.node_instance_types
-      capacity_type  = "SPOT"
+      capacity_type  = "ON_DEMAND"
       desired_size   = var.node_desired_size
       min_size       = var.node_min_size
       max_size       = var.node_max_size
       labels = {
-        role = "spot"
+        role = "baseline"
       }
     }
   }
 
-  # Prefix delegation: aumenta max-pods de 17 → ~110 no t3.medium.
-  # AL2023 EKS-optimized AMI calcula o max-pods automaticamente ao bootstap.
+  # Prefix delegation no VPC-CNI: a ENI aloca blocos /28 de IPs. Beneficia os nós do
+  # KARPENTER, que setam max-pods=110 explicitamente (k8s/karpenter/ec2nodeclass.yaml.tpl).
+  # O managed node group NÃO usa esse override (o módulo não expõe), então o nó principal
+  # usa o max-pods NATIVO do tipo: t3.large = 35 (suficiente p/ os ~22 pods do baseline).
   cluster_addons = {
-    coredns = {}
+    coredns    = {}
     kube-proxy = {}
     vpc-cni = {
       configuration_values = jsonencode({
