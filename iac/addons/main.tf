@@ -76,6 +76,15 @@ module "addons" {
   enable_karpenter        = true
   karpenter_chart_version = "1.3.3"
 
+  # 1 réplica (lab): o chart sobe o controller em HA (2 réplicas) com anti-affinity
+  # REQUIRED por hostname, o que força um 2º nó SÓ para a 2ª réplica — quebrando o
+  # objetivo de 1 nó (on-demand) em repouso. Sem HA, o controller cabe no nó baseline.
+  karpenter_helm_values = [
+    yamlencode({
+      replicas = 1
+    })
+  ]
+
   # Desabilita o service mutator webhook do ALB controller. Esse webhook
   # intercepta TODO Service do cluster e, antes dos pods do controller ficarem
   # prontos, quebra a criação de Services de outros charts (ex.: ESO) com
