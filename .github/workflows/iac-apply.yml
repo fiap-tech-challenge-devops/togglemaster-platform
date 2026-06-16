@@ -142,9 +142,12 @@ jobs:
               --query SecretString --output text | jq -r '.connection_string')
             POD="migrate-${NAME}"
             kubectl run "$POD" --image=postgres:16 --restart=Never \
-              -n togglemaster -- sleep 120
+              -n togglemaster -- sleep 300
+            # timeout folgado: em cluster recém-criado o node é frio e o pull da
+            # imagem postgres:16 pode passar de 30s, estourando o wait e abortando
+            # o deploy (que pula REDIS_URL/bootstrap/restart). 180s cobre o pull.
             kubectl wait pod/"$POD" -n togglemaster \
-              --for=condition=Ready --timeout=30s
+              --for=condition=Ready --timeout=180s
             cat "$SQL_FILE" | kubectl exec -i "$POD" -n togglemaster -- psql "$URL"
             kubectl delete pod "$POD" -n togglemaster --ignore-not-found
           }
