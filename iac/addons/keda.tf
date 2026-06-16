@@ -1,8 +1,11 @@
-# ── KEDA (autoescala orientada a eventos) ─────────────────────────────────────
-# O analytics-service escala pela PROFUNDIDADE DA FILA SQS (não por CPU). Quem
-# consulta a fila para decidir a escala é o keda-operator — por isso ele precisa
-# da própria role IRSA com sqs:GetQueueAttributes, separada da role dos pods do
-# analytics (que têm Receive/Delete para PROCESSAR as mensagens).
+# ── KEDA — IRSA do keda-operator ──────────────────────────────────────────────
+# A INSTALAÇÃO do KEDA agora é feita pelo módulo eks/addons (enable_keda, ver main.tf).
+# Aqui fica apenas a IRSA específica deste uso: o analytics-service escala pela
+# PROFUNDIDADE DA FILA SQS (não por CPU). Quem consulta a fila para decidir a escala
+# é o keda-operator — por isso ele precisa da própria role IRSA com
+# sqs:GetQueueAttributes, separada da role dos pods do analytics (que têm
+# Receive/Delete para PROCESSAR as mensagens). A anotação dessa role no SA do operator
+# é injetada via keda_helm_values na chamada do módulo (main.tf).
 
 # Resolve o ARN da fila criada no stage infra (sem acoplar via remote state).
 data "aws_sqs_queue" "evaluation_events" {
@@ -32,22 +35,4 @@ module "irsa_keda" {
   inline_policies = { sqs = data.aws_iam_policy_document.keda.json }
 
   tags = local.tags
-}
-
-# Instala o KEDA. A anotação no SA do operator é o que liga o pod do KEDA à role
-# IRSA — o EKS injeta credenciais temporárias da role via OIDC (sem chave estática).
-resource "helm_release" "keda" {
-  name             = "keda"
-  namespace        = "keda"
-  create_namespace = true
-  repository       = "https://kedacore.github.io/charts"
-  chart            = "keda"
-  version          = "2.18.3"
-
-  set = [
-    {
-      name  = "serviceAccount.operator.annotations.eks\\.amazonaws\\.com/role-arn"
-      value = module.irsa_keda.role_arn
-    }
-  ]
 }
