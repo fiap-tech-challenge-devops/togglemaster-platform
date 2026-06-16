@@ -141,6 +141,10 @@ jobs:
             URL=$(aws secretsmanager get-secret-value --secret-id "$SECRET" \
               --query SecretString --output text | jq -r '.connection_string')
             POD="migrate-${NAME}"
+            # Remove pod de um run ANTERIOR que falhou: se o wait/exec falha, a função
+            # não chega no delete final e o pod (Completed) fica no namespace, fazendo
+            # o re-run quebrar com "pods already exists". Pre-delete torna idempotente.
+            kubectl delete pod "$POD" -n togglemaster --ignore-not-found --wait=true
             kubectl run "$POD" --image=postgres:16 --restart=Never \
               -n togglemaster -- sleep 300
             # timeout folgado: em cluster recém-criado o node é frio e o pull da
