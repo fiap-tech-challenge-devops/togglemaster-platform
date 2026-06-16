@@ -68,6 +68,21 @@ module "addons" {
   enable_external_secrets             = true
   external_secrets_namespace          = var.external_secrets_namespace
 
+  # KEDA: o módulo instala o chart; a IRSA do keda-operator (sqs:GetQueueAttributes)
+  # é criada em keda.tf e anotada no SA do operator via helm values (mesmo padrão do ESO).
+  enable_keda = true
+  keda_helm_values = [
+    yamlencode({
+      serviceAccount = {
+        operator = {
+          annotations = {
+            "eks.amazonaws.com/role-arn" = module.irsa_keda.role_arn
+          }
+        }
+      }
+    })
+  ]
+
   # Karpenter: o módulo cria controller (IRSA), IAM role dos nós, access entry,
   # fila SQS de interrupção + EventBridge. As CRDs NodePool/EC2NodeClass ficam em
   # k8s/karpenter/ (aplicadas no deploy).
