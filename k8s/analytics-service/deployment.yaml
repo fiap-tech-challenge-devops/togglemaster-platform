@@ -23,21 +23,9 @@ spec:
           env:
             - name: PORT
               value: "8005"
-            - name: AWS_REGION
-              valueFrom:
-                configMapKeyRef:
-                  name: togglemaster-common
-                  key: AWS_REGION
-            - name: AWS_SQS_URL
-              valueFrom:
-                configMapKeyRef:
-                  name: togglemaster-common
-                  key: AWS_SQS_URL
-            - name: AWS_DYNAMODB_TABLE
-              valueFrom:
-                configMapKeyRef:
-                  name: togglemaster-common
-                  key: AWS_DYNAMODB_TABLE
+          envFrom:
+            - configMapRef:
+                name: analytics-service-config
           livenessProbe:
             httpGet:
               path: /health
