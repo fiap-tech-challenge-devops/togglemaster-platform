@@ -1,5 +1,3 @@
-# NodePool — REGRAS de negócio do que o Karpenter pode provisionar.
-# Aplicado no stage de deploy (CRD karpenter.sh/v1 já instalada pelo controller no addons).
 apiVersion: karpenter.sh/v1
 kind: NodePool
 metadata:
@@ -7,44 +5,31 @@ metadata:
 spec:
   template:
     spec:
-      requirements:
-        # SPOT primeiro (mais barato); cai pra on-demand se não houver SPOT.
+      requirements:       
         - key: karpenter.sh/capacity-type
           operator: In
           values: ["spot"]
-        # Só amd64 — as imagens do ECR são amd64 (evita nó Graviton/arm64 quebrar pods).
         - key: kubernetes.io/arch
           operator: In
           values: ["amd64"]
-        # Famílias de uso geral/compute, geração recente — amplo (boa disponibilidade SPOT).
         - key: karpenter.k8s.aws/instance-category
           operator: In
           values: ["t", "m", "c"]
         - key: karpenter.k8s.aws/instance-generation
           operator: Gt
           values: ["2"]
-        # Nós pequenos (2-4 vCPU): pods são minúsculos (50m), empacota melhor e custa menos.
         - key: karpenter.k8s.aws/instance-cpu
           operator: In
           values: ["2", "4"]
-      # Aponta pro EC2NodeClass que diz COMO o nó nasce na AWS.
       nodeClassRef:
         group: karpenter.k8s.aws
         kind: EC2NodeClass
         name: default
-      # Recicla o nó após 30 dias (refresh de AMI/patches).
       expireAfter: 720h
-  # Consolidação agressiva: remove nó vazio E junta nós subutilizados (economia máxima).
-  # consolidateAfter espera 1min de ociosidade antes de agir (evita thrashing na demo).
   disruption:
     consolidationPolicy: WhenEmptyOrUnderutilized
     consolidateAfter: 1m
-    # budgets controla QUANTOS nós podem ser disrompidos por vez. O default do Karpenter
-    # é "10%" — com poucos nós, floor(10% × N) = 0, e os nós SPOT de burst NUNCA
-    # consolidam após um teste (custo fica de pé). "100%" libera a consolidação total:
-    # ao fim da carga, todos os nós SPOT ociosos somem e volta-se ao baseline.
     budgets:
       - nodes: "100%"
-  # Teto de custo do NodePool — rede de segurança contra runaway.
   limits:
     cpu: "16"
