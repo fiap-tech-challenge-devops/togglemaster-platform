@@ -162,8 +162,9 @@ jobs:
 
       - name: Bootstrap SERVICE_API_KEY
         run: |
-          # Garante auth-service pronto (preciso dele de pé para validar/gerar key)
-          kubectl wait externalsecret/auth-service-app -n togglemaster \
+          # Garante auth-service pronto (preciso dele de pé para validar/gerar key).
+          # ExternalSecret unificado do auth (DATABASE_URL + MASTER_KEY).
+          kubectl wait externalsecret/auth-service -n togglemaster \
             --for=condition=Ready --timeout=60s
           kubectl rollout restart deployment/auth-service -n togglemaster
           kubectl rollout status deployment/auth-service -n togglemaster --timeout=180s

@@ -21,11 +21,8 @@ spec:
             - containerPort: 8001
           env:
             - name: PORT
-              value: "8001"
-          # DATABASE_URL e MASTER_KEY vêm dos Secrets (chaves já nomeadas como as envs).
+              value: "8001"          
           envFrom:
-            - secretRef:
-                name: auth-service-rds-secret
             - secretRef:
                 name: auth-service-secrets
           livenessProbe:
