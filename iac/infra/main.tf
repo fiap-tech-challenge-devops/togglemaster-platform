@@ -153,13 +153,14 @@ module "redis" {
   tags = local.tags
 }
 
-# ── SQS (evaluation-events + DLQ) ─────────────────────────────────────────────
+# ── SQS (evaluation-events) ───────────────────────────────────────────────────
 module "sqs" {
   source = "github.com/vitorfprado/terraform-aws-modules//sqs?ref=main"
 
   name                      = "${var.system}-evaluation-events"
   receive_wait_time_seconds = 20 # long polling (igual ao analytics-service)
-  create_dlq                = true
+  # O desafio pede só 1 fila SQS Standard — DLQ não é requisito. (Default do módulo é true.)
+  create_dlq = false
 
   tags = local.tags
 }
