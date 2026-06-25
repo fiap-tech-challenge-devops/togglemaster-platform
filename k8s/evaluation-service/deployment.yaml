@@ -23,36 +23,11 @@ spec:
           env:
             - name: PORT
               value: "8004"
-            - name: FLAG_SERVICE_URL
-              valueFrom:
-                configMapKeyRef:
-                  name: togglemaster-common
-                  key: FLAG_SERVICE_URL
-            - name: TARGETING_SERVICE_URL
-              valueFrom:
-                configMapKeyRef:
-                  name: togglemaster-common
-                  key: TARGETING_SERVICE_URL
-            - name: REDIS_URL
-              valueFrom:
-                configMapKeyRef:
-                  name: togglemaster-common
-                  key: REDIS_URL
-            - name: AWS_REGION
-              valueFrom:
-                configMapKeyRef:
-                  name: togglemaster-common
-                  key: AWS_REGION
-            - name: AWS_SQS_URL
-              valueFrom:
-                configMapKeyRef:
-                  name: togglemaster-common
-                  key: AWS_SQS_URL
-            - name: SERVICE_API_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: evaluation-service-secrets
-                  key: SERVICE_API_KEY
+          envFrom:
+            - configMapRef:
+                name: evaluation-service-config
+            - secretRef:
+                name: evaluation-service-secrets
           livenessProbe:
             httpGet:
               path: /health

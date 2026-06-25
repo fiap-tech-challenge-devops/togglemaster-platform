@@ -34,7 +34,7 @@ resource "aws_ssm_parameter" "vpc_id" {
   tags  = local.tags
 }
 
-# REDIS_URL completo — injetado no ConfigMap togglemaster-common pelo stage de deploy
+# REDIS_URL completo — injetado no ConfigMap evaluation-service-config pelo stage de deploy
 resource "aws_ssm_parameter" "redis_url" {
   name  = "${local.ssm_prefix}/redis-url"
   type  = "String"

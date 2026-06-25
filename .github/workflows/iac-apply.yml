@@ -219,9 +219,10 @@ jobs:
 
       - name: Injetar REDIS_URL (do SSM) no ConfigMap
         run: |
+          # REDIS_URL só é usado pelo evaluation-service → patch no ConfigMap dele.
           REDIS_URL=$(aws ssm get-parameter --name /togglemaster/iac/redis-url \
             --query Parameter.Value --output text)
-          kubectl patch configmap togglemaster-common -n togglemaster --type merge \
+          kubectl patch configmap evaluation-service-config -n togglemaster --type merge \
             -p "{\"data\":{\"REDIS_URL\":\"${REDIS_URL}\"}}"
 
       - name: Reiniciar serviços

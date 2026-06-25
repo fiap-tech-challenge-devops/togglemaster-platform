@@ -22,16 +22,12 @@ spec:
           env:
             - name: PORT
               value: "8001"
-            - name: DATABASE_URL
-              valueFrom:
-                secretKeyRef:
-                  name: auth-service-rds-secret
-                  key: DATABASE_URL
-            - name: MASTER_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: auth-service-secrets
-                  key: MASTER_KEY
+          # DATABASE_URL e MASTER_KEY vêm dos Secrets (chaves já nomeadas como as envs).
+          envFrom:
+            - secretRef:
+                name: auth-service-rds-secret
+            - secretRef:
+                name: auth-service-secrets
           livenessProbe:
             httpGet:
               path: /health
