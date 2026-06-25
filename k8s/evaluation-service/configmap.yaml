@@ -6,11 +6,6 @@ metadata:
 data:
   AWS_REGION: "us-east-1"
   AWS_SQS_URL: "https://sqs.us-east-1.amazonaws.com/650687537445/togglemaster-evaluation-events"
-
-  # Injetado pelo stage de deploy a partir do SSM (/togglemaster/iac/redis-url),
-  # pois o endpoint do ElastiCache é gerado pela AWS a cada criação da infra.
-  REDIS_URL: "set-by-deploy-from-ssm"
-
-  # URLs internas — DNS curto funciona dentro do namespace togglemaster
+  REDIS_URL: "set-by-deploy-from-ssm" # Injetado pelo stage de deploy a partir do SSM (/togglemaster/iac/redis-url)
   FLAG_SERVICE_URL: "http://flag-service:8002"
   TARGETING_SERVICE_URL: "http://targeting-service:8003"
