@@ -100,10 +100,11 @@ module "rds" {
   source   = "github.com/vitorfprado/terraform-aws-modules//rds?ref=main"
   for_each = local.rds_instances
 
-  name           = "rds-${var.system}-${each.key}"
-  engine         = "postgres"
-  engine_version = var.rds_engine_version
-  instance_class = var.rds_instance_class
+  name                = "rds-${var.system}-${each.key}"
+  security_group_name = "rds-sg-${var.system}-${each.key}" # rds-sg-togglemaster-<svc>
+  engine              = "postgres"
+  engine_version      = var.rds_engine_version
+  instance_class      = var.rds_instance_class
 
   allocated_storage = var.rds_allocated_storage
   storage_type      = "gp3"
@@ -134,10 +135,11 @@ module "rds" {
 module "redis" {
   source = "github.com/vitorfprado/terraform-aws-modules//elasticache?ref=main"
 
-  name           = "redis-${var.system}"
-  engine         = "redis"
-  engine_version = var.redis_engine_version
-  node_type      = var.redis_node_type
+  name                = "redis-${var.system}"
+  security_group_name = "redis-sg-${var.system}" # redis-sg-togglemaster
+  engine              = "redis"
+  engine_version      = var.redis_engine_version
+  node_type           = var.redis_node_type
 
   num_cache_clusters = 1
 
