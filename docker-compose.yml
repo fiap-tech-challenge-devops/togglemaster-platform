@@ -1,25 +1,5 @@
 services:
-  auth-postgres:
-    image: postgres:16-alpine
-    container_name: togglemaster-auth-postgres
-    environment:
-      POSTGRES_DB: auth_db
-      POSTGRES_USER: auth_user
-      POSTGRES_PASSWORD: auth_pass
-    volumes:
-      - postgres-data:/var/lib/postgresql/data
-      - ../auth-service/db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
-    ports:
-      - "5432:5432"
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U auth_user -d auth_db"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 10s
-    networks:
-      - togglemaster-network
-
+  # ─── Microsserviços ───────────────────────────────────────────────────────────
   auth-service:
     build:
       context: ../auth-service
@@ -39,27 +19,6 @@ services:
       timeout: 10s
       retries: 3
       start_period: 15s
-    networks:
-      - togglemaster-network
-
-  flags-postgres:
-    image: postgres:16-alpine
-    container_name: togglemaster-flags-postgres
-    environment:
-      POSTGRES_DB: flags_db
-      POSTGRES_USER: flags_user
-      POSTGRES_PASSWORD: flags_pass
-    volumes:
-      - flags-postgres-data:/var/lib/postgresql/data
-      - ../flag-service/db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
-    ports:
-      - "5433:5432"
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U flags_user -d flags_db"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 10s
     networks:
       - togglemaster-network
 
@@ -87,27 +46,6 @@ services:
     networks:
       - togglemaster-network
 
-  targeting-postgres:
-    image: postgres:16-alpine
-    container_name: togglemaster-targeting-postgres
-    environment:
-      POSTGRES_DB: targeting_db
-      POSTGRES_USER: targeting_user
-      POSTGRES_PASSWORD: targeting_pass
-    volumes:
-      - targeting-postgres-data:/var/lib/postgresql/data
-      - ../targeting-service/db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
-    ports:
-      - "5434:5432"
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U targeting_user -d targeting_db"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 10s
-    networks:
-      - togglemaster-network
-
   targeting-service:
     build:
       context: ../targeting-service
@@ -129,20 +67,6 @@ services:
       timeout: 10s
       retries: 3
       start_period: 15s
-    networks:
-      - togglemaster-network
-
-  redis:
-    image: redis:7-alpine
-    container_name: togglemaster-redis
-    ports:
-      - "6379:6379"
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 10s
     networks:
       - togglemaster-network
 
@@ -192,6 +116,84 @@ services:
       timeout: 10s
       retries: 3
       start_period: 15s
+    networks:
+      - togglemaster-network
+
+  # ─── Bancos de dados ──────────────────────────────────────────────────────────
+  auth-postgres:
+    image: postgres:16-alpine
+    container_name: togglemaster-auth-postgres
+    environment:
+      POSTGRES_DB: auth_db
+      POSTGRES_USER: auth_user
+      POSTGRES_PASSWORD: auth_pass
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ../auth-service/db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U auth_user -d auth_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - togglemaster-network
+
+  flags-postgres:
+    image: postgres:16-alpine
+    container_name: togglemaster-flags-postgres
+    environment:
+      POSTGRES_DB: flags_db
+      POSTGRES_USER: flags_user
+      POSTGRES_PASSWORD: flags_pass
+    volumes:
+      - flags-postgres-data:/var/lib/postgresql/data
+      - ../flag-service/db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U flags_user -d flags_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - togglemaster-network
+
+  targeting-postgres:
+    image: postgres:16-alpine
+    container_name: togglemaster-targeting-postgres
+    environment:
+      POSTGRES_DB: targeting_db
+      POSTGRES_USER: targeting_user
+      POSTGRES_PASSWORD: targeting_pass
+    volumes:
+      - targeting-postgres-data:/var/lib/postgresql/data
+      - ../targeting-service/db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    ports:
+      - "5434:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U targeting_user -d targeting_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - togglemaster-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: togglemaster-redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
     networks:
       - togglemaster-network
 
