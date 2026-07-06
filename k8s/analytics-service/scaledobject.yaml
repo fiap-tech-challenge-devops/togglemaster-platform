@@ -15,17 +15,26 @@ metadata:
   namespace: togglemaster
 spec:
   scaleTargetRef:
-    name: analytics-service    
-  minReplicaCount: 0            
-  maxReplicaCount: 10
-  pollingInterval: 20         
-  cooldownPeriod: 60      
+    name: analytics-service
+  minReplicaCount: 0
+  maxReplicaCount: 10             
+  pollingInterval: 20
+  cooldownPeriod: 60
+  advanced:
+    horizontalPodAutoscalerConfig:
+      behavior:
+        scaleUp:
+          stabilizationWindowSeconds: 15   # rampa visível, mas fica atrás do HPA no eval demo
+          policies:
+            - type: Pods
+              value: 3                       # +3 pods a cada 15s (0→10 em ~1min)
+              periodSeconds: 15
   triggers:
     - type: aws-sqs-queue
       authenticationRef:
-        name: keda-aws-sqs     
-      metadata:       
+        name: keda-aws-sqs
+      metadata:
         queueURL: "https://sqs.us-east-1.amazonaws.com/650687537445/togglemaster-evaluation-events"
-        queueLength: "5"      
+        queueLength: "50"        # fila precisa ficar mais funda p/ escalar (tolera o eval demo)
         awsRegion: "us-east-1"
         identityOwner: operator

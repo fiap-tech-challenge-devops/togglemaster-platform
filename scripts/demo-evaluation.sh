@@ -2,11 +2,13 @@
 # ─────────────────────────────────────────────────────────────────────────────
 # Demo 1 — escala do evaluation-service por CPU (HPA)
 #
-# Sobe um pod efêmero "hey" que gera carga HTTP no /evaluate (service interno).
-# A CPU do evaluation sobe e o HPA aumenta as réplicas. O pod se autodestrói (--rm).
+# Gera carga HTTP EXTERNA no /evaluate, direto no DNS público do ALB (entra pelo
+# Ingress, como um cliente real). O 'hey' roda num container LOCAL (docker), então
+# o tráfego se origina FORA do cluster. A CPU do evaluation sobe e o HPA aumenta as
+# réplicas.
 #
-# Uso:   bash scripts/demo-evaluation.sh [duração] [concorrência]
-# Ex.:   bash scripts/demo-evaluation.sh 120s 100
+# Uso:   bash scripts/demo-evaluation.sh [duração] [concorrência] [flag]
+# Ex.:   bash scripts/demo-evaluation.sh 120s 100 enable-new-dashboard
 #
 # Acompanhe em OUTRO terminal:
 #   kubectl get hpa evaluation-service -n togglemaster -w
@@ -16,15 +18,24 @@ set -euo pipefail
 export MSYS_NO_PATHCONV=1   # Git Bash (Windows): não converter /bin/... em path Windows
 
 NS=togglemaster
-DURATION="${1:-120s}"     # duração da carga (default 120s)
-CONCURRENCY="${2:-100}"   # conexões simultâneas (default 100)
-TARGET="http://evaluation-service:8004/evaluate?user_id=demo&flag_name=new-checkout"
+DURATION="${1:-60s}"           # duração da carga (default 60s — pico curto p/ HPA)
+CONCURRENCY="${2:-150}"        # conexões simultâneas (default 150)
+FLAG="${3:-enable-new-dashboard}"   # flag avaliada (default enable-new-dashboard, criada na demo)
 
-echo ">> Demo 1 — carga no evaluation-service (HPA por CPU)"
-echo ">> duração=${DURATION}  concorrência=${CONCURRENCY}"
+# DNS público do ALB (Ingress) — captura dinâmica
+ALB="$(kubectl get ingress togglemaster -n "$NS" -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')"
+if [[ -z "$ALB" ]]; then
+  echo "ERRO: não consegui obter o DNS do ALB (ingress togglemaster). O ALB já subiu?" >&2
+  exit 1
+fi
+
+TARGET="http://${ALB}/evaluate?user_id=demo&flag_name=${FLAG}"
+
+echo ">> Demo 1 — carga EXTERNA no evaluation-service via ALB (HPA por CPU)"
+echo ">> ALB=${ALB}"
+echo ">> duração=${DURATION}  concorrência=${CONCURRENCY}  flag=${FLAG}"
 echo ">> acompanhe: kubectl get hpa evaluation-service -n ${NS} -w"
 echo
 
-kubectl run hey-load --rm -i --restart=Never -n "$NS" \
-  --image=williamyeh/hey -- \
-  -z "$DURATION" -c "$CONCURRENCY" "$TARGET"
+# 'hey' via container local: o tráfego sai da sua máquina e entra pelo ALB (externo).
+docker run --rm williamyeh/hey -z "$DURATION" -c "$CONCURRENCY" "$TARGET"

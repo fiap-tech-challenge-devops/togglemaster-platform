@@ -6,8 +6,12 @@
 # service account "evaluation-service" (sqs:SendMessage) — SEM credencial estática.
 # A fila enche, o KEDA detecta a profundidade e escala o analytics. Pod --rm no fim.
 #
+# Injeção em LOTE: usa `send-message-batch` (10 msgs por chamada), então são
+# COUNT/10 invocações do aws em vez de COUNT — muito mais rápido (o cold-start do
+# aws CLI era o gargalo). ~20 lotes em paralelo por vez.
+#
 # Uso:   bash scripts/demo-analytics.sh [quantidade]
-# Ex.:   bash scripts/demo-analytics.sh 4000
+# Ex.:   bash scripts/demo-analytics.sh 2000
 #
 # Acompanhe em OUTRO terminal:
 #   kubectl get scaledobject,hpa -n togglemaster -w
@@ -17,18 +21,37 @@ set -euo pipefail
 export MSYS_NO_PATHCONV=1   # Git Bash (Windows): não converter paths
 
 NS=togglemaster
-COUNT="${1:-4000}"        # quantidade de mensagens (default 4000)
+COUNT="${1:-2000}"        # quantidade de mensagens (default 2000)
 QURL="https://sqs.us-east-1.amazonaws.com/650687537445/togglemaster-evaluation-events"
 
-echo ">> Demo 2 — injetando ${COUNT} mensagens na SQS (KEDA por fila)"
+echo ">> Demo 2 — injetando ${COUNT} mensagens na SQS em LOTE (KEDA por fila)"
 echo ">> via pod efêmero com IRSA do SA evaluation-service (sem credencial)"
 echo ">> acompanhe: kubectl get scaledobject,hpa -n ${NS} -w"
 echo
 
-# O loop roda DENTRO do pod (Linux). QURL/COUNT chegam como env; $i é do pod.
-# 60 envios em paralelo por vez (wait) para injetar rápido sem estourar.
+# Idempotência: remove um pod órfão de uma execução anterior interrompida (o --rm
+# não limpa se você der Ctrl+C), senão o kubectl run falha com "already exists".
+kubectl delete pod sqs-load -n "$NS" --ignore-not-found --wait=true >/dev/null 2>&1 || true
+
+# O loop roda DENTRO do pod (Linux). QURL/COUNT chegam como env; $i/$j são do pod.
+# Cada iteração monta um lote de até 10 entradas e envia com send-message-batch.
+# Os Ids do lote precisam ser únicos por request (usamos o índice global).
 kubectl run sqs-load --rm -i --restart=Never -n "$NS" \
   --image=amazon/aws-cli \
   --env="QURL=$QURL" --env="COUNT=$COUNT" \
   --overrides='{"spec":{"serviceAccountName":"evaluation-service"}}' \
-  --command -- /bin/bash -c 'for i in $(seq 1 "$COUNT"); do aws sqs send-message --queue-url "$QURL" --message-body "{\"user_id\":\"load-$i\",\"flag_name\":\"new-checkout\",\"result\":true,\"timestamp\":\"2026-06-06T13:00:00Z\"}" >/dev/null & [ $((i % 60)) -eq 0 ] && wait; done; wait; echo "$COUNT mensagens enviadas"'
+  --command -- /bin/bash -c '
+    for i in $(seq 1 10 "$COUNT"); do
+      entries="["; first=1
+      for j in $(seq "$i" $((i+9))); do
+        [ "$j" -gt "$COUNT" ] && break
+        [ "$first" -eq 0 ] && entries="$entries,"
+        entries="$entries{\"Id\":\"$j\",\"MessageBody\":\"{\\\"user_id\\\":\\\"load-$j\\\",\\\"flag_name\\\":\\\"enable-new-dashboard\\\",\\\"result\\\":true,\\\"timestamp\\\":\\\"2026-07-06T13:00:00Z\\\"}\"}"
+        first=0
+      done
+      entries="$entries]"
+      aws sqs send-message-batch --queue-url "$QURL" --entries "$entries" >/dev/null &
+      [ $(( (i/10) % 20 )) -eq 0 ] && wait
+    done
+    wait
+    echo "$COUNT mensagens enviadas"'
