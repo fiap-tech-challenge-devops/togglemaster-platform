@@ -4,10 +4,10 @@ variable "region" {
   default     = "us-east-1"
 }
 
-variable "admin_iam_arns" {
-  description = "Lista de ARNs IAM (usuários/roles) que recebem acesso cluster-admin no EKS"
+variable "admin_iam_usernames" {
+  description = "Usuários IAM que recebem cluster-admin no EKS. O ARN é montado com o account ID atual (auto-detectado), então é portável entre contas."
   type        = list(string)
-  default     = ["arn:aws:iam::650687537445:user/vitor.prado"]
+  default     = ["vitor.aws"]
 }
 
 variable "system" {

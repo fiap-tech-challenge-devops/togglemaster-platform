@@ -1,5 +1,14 @@
+# Account ID da conta onde o Terraform está rodando — usado para montar os ARNs
+# de admin do EKS sem hardcodar a conta (portável na migração).
+data "aws_caller_identity" "current" {}
+
 locals {
   cluster_name = "eks-${var.system}"
+
+  # ARNs dos usuários admin, montados com o account atual (auto-detectado).
+  admin_iam_arns = [
+    for u in var.admin_iam_usernames : "arn:aws:iam::${data.aws_caller_identity.current.account_id}:user/${u}"
+  ]
 
   tags = {
     Project = "ToggleMaster"
@@ -184,7 +193,7 @@ module "dynamodb" {
 
 # ── EKS access entries (admin local) ─────────────────────────────────────────
 resource "aws_eks_access_entry" "admin" {
-  for_each = toset(var.admin_iam_arns)
+  for_each = toset(local.admin_iam_arns)
 
   cluster_name  = module.eks.cluster_name
   principal_arn = each.value
@@ -192,7 +201,7 @@ resource "aws_eks_access_entry" "admin" {
 }
 
 resource "aws_eks_access_policy_association" "admin" {
-  for_each = toset(var.admin_iam_arns)
+  for_each = toset(local.admin_iam_arns)
 
   cluster_name  = module.eks.cluster_name
   principal_arn = each.value

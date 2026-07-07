@@ -9,20 +9,20 @@ spec:
     kind: Deployment
     name: evaluation-service
   minReplicas: 1
-  maxReplicas: 10
+  maxReplicas: 15
   metrics:
     - type: Resource
       resource:
         name: cpu
         target:
           type: Utilization
-          averageUtilization: 60      # 60% de 100m = 60m — dimensionamento realista
+          averageUtilization: 30      # Mantido uma baixa porcentagem baixa para facilitar a demonstração do teste de carga
   behavior:
     scaleUp:
-      stabilizationWindowSeconds: 0   # reage sem janela de espera
-      policies:
-        - type: Pods
-          value: 2                     # rampa em degraus: +2 pods a cada 15s
-          periodSeconds: 15
-    scaleDown:
-      stabilizationWindowSeconds: 120  # desce devagar (evita flapping na demo)
+      stabilizationWindowSeconds: 0   
+      # policies:
+      #   - type: Pods
+      #     value: 2                     # rampa em degraus: +2 pods a cada 15s
+      #     periodSeconds: 15
+    # scaleDown:
+    #   stabilizationWindowSeconds: 120  # desce devagar (evita flapping na demo)
