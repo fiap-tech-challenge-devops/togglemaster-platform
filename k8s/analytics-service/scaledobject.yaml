@@ -17,7 +17,7 @@ spec:
   scaleTargetRef:
     name: analytics-service
   minReplicaCount: 0
-  maxReplicaCount: 5             
+  maxReplicaCount: 10             
   pollingInterval: 20
   cooldownPeriod: 60
   # advanced:
@@ -34,7 +34,7 @@ spec:
       authenticationRef:
         name: keda-aws-sqs
       metadata:
-        queueURL: "https://sqs.us-east-1.amazonaws.com/${AWS_ACCOUNT_ID}/togglemaster-evaluation-events"
-        queueLength: "50"       
+        queueURL: "https://sqs.us-east-1.amazonaws.com/762103020993/togglemaster-evaluation-events"
+        queueLength: "500"       
         awsRegion: "us-east-1"
         identityOwner: operator

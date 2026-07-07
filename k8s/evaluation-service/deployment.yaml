@@ -16,7 +16,7 @@ spec:
       serviceAccountName: evaluation-service
       containers:
         - name: evaluation-service
-          image: ${AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com/togglemaster/evaluation-service:latest
+          image: 762103020993.dkr.ecr.us-east-1.amazonaws.com/togglemaster/evaluation-service:latest
           imagePullPolicy: Always
           ports:
             - containerPort: 8004
@@ -49,5 +49,5 @@ spec:
               cpu: "100m"
               memory: "128Mi"
             limits:
-              cpu: "300m"
+              cpu: "400m" 
               memory: "256Mi"

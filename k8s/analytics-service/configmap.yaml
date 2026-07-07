@@ -5,5 +5,5 @@ metadata:
   namespace: togglemaster
 data:
   AWS_REGION: "us-east-1"
-  AWS_SQS_URL: "https://sqs.us-east-1.amazonaws.com/${AWS_ACCOUNT_ID}/togglemaster-evaluation-events"
+  AWS_SQS_URL: "https://sqs.us-east-1.amazonaws.com/762103020993/togglemaster-evaluation-events"
   AWS_DYNAMODB_TABLE: "ToggleMasterAnalytics"
