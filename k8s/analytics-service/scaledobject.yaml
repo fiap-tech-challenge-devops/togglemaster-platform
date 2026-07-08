@@ -17,18 +17,9 @@ spec:
   scaleTargetRef:
     name: analytics-service
   minReplicaCount: 0
-  maxReplicaCount: 10             
+  maxReplicaCount: 15             
   pollingInterval: 20
   cooldownPeriod: 60
-  # advanced:
-  #   horizontalPodAutoscalerConfig:
-  #     behavior:
-  #       scaleUp:
-  #         stabilizationWindowSeconds: 15   # rampa visível, mas fica atrás do HPA no eval demo
-  #         policies:
-  #           - type: Pods
-  #             value: 3                       # +3 pods a cada 15s (0→10 em ~1min)
-  #             periodSeconds: 15
   triggers:
     - type: aws-sqs-queue
       authenticationRef:
