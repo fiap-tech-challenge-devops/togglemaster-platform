@@ -7,7 +7,7 @@ variable "region" {
 variable "admin_iam_arns" {
   description = "Lista de ARNs IAM (usuários/roles) que recebem acesso cluster-admin no EKS"
   type        = list(string)
-  default     = ["arn:aws:iam::650687537445:user/vitor.prado"]
+  default     = ["arn:aws:iam::762103020993:user/vitor.aws"]
 }
 
 variable "system" {

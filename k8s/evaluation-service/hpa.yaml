@@ -16,4 +16,13 @@ spec:
         name: cpu
         target:
           type: Utilization
-          averageUtilization: 70
+          averageUtilization: 10      # Mantido uma baixa porcentagem baixa para facilitar a demonstração do teste de carga
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 0   
+      # policies:
+      #   - type: Pods
+      #     value: 2                     # rampa em degraus: +2 pods a cada 15s
+      #     periodSeconds: 15
+    # scaleDown:
+    #   stabilizationWindowSeconds: 120  # desce devagar (evita flapping na demo)
